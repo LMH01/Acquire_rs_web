@@ -9,7 +9,7 @@ pub struct GameInstance {
 
 impl GameInstance {
 
-    pub fn new(game_manager: &GameManager, game_id: i32) -> Self {
+    pub fn new(game_manager: &GameManager) -> Self {
         Self {
             players: Vec::new(),
             game_code: game_manager.generate_game_code(),

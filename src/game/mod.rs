@@ -1,3 +1,5 @@
+use rocket::FromForm;
+
 use self::game_instance::GameInstance;
 
 /// Contains all base components that are required to run a game
@@ -51,7 +53,39 @@ impl GameManager {
 }
 
 /// Unique 9 character code that identifies a game
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct GameCode {
     game_code: [char; 9],
+}
+
+impl GameCode {
+    pub fn new(random_chars: Vec<char>) -> Option<Self> {
+        // Check if only 8 characters where submitted
+        if random_chars.len() > 8 {
+            return None;
+        }
+        let mut game_code: [char; 9] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+        let mut loops = 0;
+        for c in random_chars {
+            game_code[loops] = c;
+            if loops == 3 {
+                loops += 1;
+                game_code[loops] = '-';
+            }
+            loops += 1;
+        }
+        Some(Self {
+            game_code,
+        })
+    }
+}
+
+impl ToString for GameCode {
+    fn to_string(&self) -> String {
+        let mut s = String::new();
+        for c in self.game_code {
+            s.push(c);
+        }
+        s
+    }
 }

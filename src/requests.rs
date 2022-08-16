@@ -1,9 +1,17 @@
 use std::path::Path;
 
-use rocket::{http::CookieJar, fs::NamedFile, get};
+use rocket::{http::CookieJar, fs::NamedFile, get, log::private::info};
+
+use crate::game::GameCode;
 
 #[get("/lobby")]
 pub async fn lobby() -> Option<NamedFile> {
+    let mut x = Vec::new();
+    for i in 1..=8 {
+        x.push(char::from_digit(i, 10).unwrap());
+    }
+    let game_code = GameCode::new(x).unwrap();
+    info!("Game code: {:?}", game_code.to_string());
     NamedFile::open(Path::new("web/protected/lobby.html")).await.ok()
 }
 

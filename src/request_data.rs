@@ -54,23 +54,24 @@ pub struct EventData {
     /// When this is 0 the message is meant to be relevant for all players.
     player: usize,
     /// Indicates for what game this request is relevant
-    game_id: i32,
+    game_code: String,
     /// Additional data
     data: String,
 }
 
 impl EventData {
-    pub fn new(player: usize, game_id: i32, data: String) -> Self {
+    /// Construct new event data
+    pub fn new(player: usize, GameCode: GameCode, data: String) -> Self {
         Self {
             player,
-            game_id,
+            game_code: GameCode.to_string(),
             data, 
         }
     }
 
     /// # Returns
-    /// The game id to which this data event belongs
-    pub fn game_id(&self) -> i32 {
-        self.game_id
+    /// The game code to which this data event belongs
+    pub fn game_code(&self) -> String {
+        self.game_code.to_string()
     }
 }
