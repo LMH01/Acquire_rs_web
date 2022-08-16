@@ -17,3 +17,4 @@ The web server will be realized by using the the asynchronous web framework [Roc
 - [ ] Usage of HTTPS
 - [ ] Customizable settings
 - [ ] Support for language selection (eng/ger)
+- [ ] Responsive design for phone, tablet and desktop
