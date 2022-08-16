@@ -18,3 +18,9 @@ The web server will be realized by using the the asynchronous web framework [Roc
 - [ ] Customizable settings
 - [ ] Support for language selection (eng/ger)
 - [ ] Responsive design for phone, tablet and desktop
+- [ ] Public and private lobbies
+- [ ] Kick players from the game lobby
+- [ ] Join random public lobbies
+
+# Maybe sometime
+- [ ] Public game browser
