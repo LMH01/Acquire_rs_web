@@ -1,5 +1,10 @@
 use super::{GameManager, base_game::Player, GameCode};
 
+/// Functions related to the games logic
+/// 
+/// All these function will be called from within a [GameInstance](../struct.GameInstance.html)
+mod logic;
+
 /// Representation of a game
 pub struct GameInstance {
     players: Vec<Player>,
