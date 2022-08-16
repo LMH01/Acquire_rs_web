@@ -5,15 +5,87 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Document</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap" rel="stylesheet"> 
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet"> 
+    <link rel="stylesheet" href="../style.css">
     <link rel="stylesheet" href="../styles/lobby_style.css">
     <script type="text/javascript" src="../scripts/lobby_script.js"></script>
 </head>
 <body>
     <h1 class="title">
-        Welcome to the lobby
+        ACQUIRE
     </h1>
-    <button class="button" onclick="hello()">
-        Drück mich!
-    </button>
+    <h4 class="online">
+        ONLINE
+    </h4>
+    <div class="lobby-container">
+        <div class="enter-player-name-container">
+            <label class="form-label" for="player-name" id="player-name-label">
+                Welcome to the game acquire, please<br> enter a username to create a new lobby.
+            </label>
+            <label class="form-label" for="player-name" id="player-name-label" hidden>
+                Welcome to the game acquire, please<br> enter a username to join the lobby.
+            </label>
+            <input type="text" class="form-control" id="player-name" placeholder="enter username">
+            <div class="enter-player-name-button-container">
+                <button type="button" class="btn btn-success" id="enter-player-name" onclick="demo()">
+                    Create lobby
+                </button>
+                <button type="button" class="btn btn-success" id="enter-player-name" hidden>
+                    Join lobby
+                </button>
+            </div>
+        </div>
+        <div class="lobby-inner-container" id="lobby-inner-container">
+            <div class="game-code-container">
+                <h4 class="game-code-text">
+                    Game code: 
+                    <span class="badge bg-secondary" id="game-code-placeholder">
+                        <p class="placeholder-glow">
+                            <span class="placeholder col-12">
+                                LOADING
+                            </span>
+                        </p>
+                    </span>
+                    <span class="badge bg-secondary" id="game-code" hidden>
+                        GAME-CODE
+                    </span>
+                </h4>
+            </div>
+            <div class="d-grid grap-2">
+                <button type="button" class="btn btn-success" id="start-game-button" disabled>
+                    Start game
+                </button>
+                <button type="button" class="btn btn-secondary" id="wait-for-game-start-button" hidden>
+                    Waiting for host to start game
+                </button>
+            </div>
+            <div class="player-list-main-container">
+                <h5 class="players-title">
+                    Joined players:
+                </h5>
+                <div class="player-list-container">
+                    <div class="player-list-container-loading" id="player-list-placeholder">
+                        <p class="placeholder-glow" id="player-list-placeholder">
+                            <span class="placeholder col-12 placeholder-lg"></span>
+                        </p>
+                    </div>
+                    <ul class="player-list" id="player-list" hidden>
+                        <li class="list-group-item list-group-item-primary" hidden>
+                            CURRENT-PLAYER
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="github-container">
+        <a id="github-link" href="https://github.com/LMH01/Acquire_rs_web" class="btn btn-secondary">
+            Github
+        </a>
+    </div>
 </body>
 </html>
