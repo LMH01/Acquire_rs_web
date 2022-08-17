@@ -39,7 +39,7 @@ impl GameManager {
 
     /// # Returns
     ///
-    /// `Some(&mut Game)` when the game was found where the user is playing in
+    /// `Some(&mut Game)` when the game was found where the player is playing in
     ///
     /// `None` the player id does not appear to be assigned to a game
     pub fn game_by_player_id(&mut self, id: i32) -> Option<&mut GameInstance> {

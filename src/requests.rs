@@ -25,14 +25,14 @@ pub fn debug(game_manager: &State<RwLock<GameManager>>) -> String {
     game_code.to_string()
 }
 
-/// Retrieves the user id from the `userid` cookie
+/// Retrieves the player id from the `player_id` cookie
 ///
 /// # Returns
 /// 'Some(i32)' when the id was found
-/// 'None' when the user id was not found or the cookie was not set
-pub fn user_id_from_cookies(cookies: &CookieJar<'_>) -> Option<i32> {
+/// 'None' when the player id was not found or the cookie was not set
+pub fn player_id_from_cookies(cookies: &CookieJar<'_>) -> Option<i32> {
     cookies
-        .get("userid")
+        .get("player_id")
         .map(|cookie| cookie.value().parse().unwrap())
 }
 

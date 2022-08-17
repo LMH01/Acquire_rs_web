@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     game::{GameCode, GameManager},
-    requests::user_id_from_cookies,
+    requests::player_id_from_cookies,
 };
 
 /// Errors that can occur when the player tries to authenticate a request
@@ -37,7 +37,7 @@ impl<'r> FromRequest<'r> for PlayerAuth {
     type Error = PlayerAuthError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
-        let player_id = match user_id_from_cookies(request.cookies()) {
+        let player_id = match player_id_from_cookies(request.cookies()) {
             Some(id) => id,
             None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Missing)),
         };

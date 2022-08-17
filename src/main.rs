@@ -29,7 +29,5 @@ fn rocket() -> _ {
 }
 
 // TODO
-// Überall den aktuellen code nach user durchsuchen und durch player ersetzen.
-// Erst danach mit der weiteren Implementierung fortfahren!
 //
 // Das private cookie jar als authentication testen
