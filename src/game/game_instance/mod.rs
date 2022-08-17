@@ -1,19 +1,18 @@
-use super::{GameManager, base_game::Player, GameCode};
+use super::{base_game::Player, GameCode, GameManager};
 
 /// Functions related to the games logic
-/// 
+///
 /// All these function will be called from within a [GameInstance](../struct.GameInstance.html)
 mod logic;
 
 /// Representation of a game
 pub struct GameInstance {
     players: Vec<Player>,
-    /// Unique 9 character id that identifies 
+    /// Unique 9 character id that identifies
     game_code: GameCode,
 }
 
 impl GameInstance {
-
     pub fn new(game_manager: &GameManager) -> Self {
         Self {
             players: Vec::new(),
@@ -30,5 +29,4 @@ impl GameInstance {
     pub fn game_code(&self) -> &GameCode {
         &self.game_code
     }
-
 }
