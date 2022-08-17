@@ -5,10 +5,10 @@ use rocket::{
     get,
     http::{ContentType, CookieJar, Status},
     log::private::info,
-    State, Response, response::Redirect, serde::json::Json,
+    State, Response, response::Redirect, serde::json::Json, post,
 };
 
-use crate::game::{self, GameCode, GameManager};
+use crate::{game::{self, GameCode, GameManager}, request_data::{UserRegistration, Username}};
 
 #[get("/lobby")]
 pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFile> {
@@ -30,6 +30,30 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
             .ok())
     } else {
         Err(Redirect::to("/lobby"))
+    }
+}
+
+/// 
+/// # Requires
+/// The user needs to send a username formatted in a json string in the post request body.
+#[post("/api/create_game", data = "<username>", rank = 1)]
+pub fn create_game(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>, ip_addr: IpAddr) -> Option<Json<UserRegistration>> {
+    let mut game_manager = game_manager.write().unwrap();
+    match game_manager.create_game(String::from(username.username), Some(ip_addr)) {
+        Some(registration) => Some(Json(registration)),
+        None => None,
+    }
+}
+
+/// 
+/// # Requires
+/// The user needs to send a username formatted in a json string in the post request body.
+#[post("/api/create_game", data = "<username>", rank = 2)]
+pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
+    let mut game_manager = game_manager.write().unwrap();
+    match game_manager.create_game(String::from(username.username), None) {
+        Some(registration) => Some(Json(registration)),
+        None => None,
     }
 }
 

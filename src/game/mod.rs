@@ -3,7 +3,7 @@ use std::{net::IpAddr, sync::RwLock};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status};
 
-use crate::{authentication::User};
+use crate::{request_data::UserRegistration};
 
 use self::{game_instance::GameInstance, base_game::Player};
 
@@ -22,14 +22,16 @@ const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
 pub struct GameManager {
     /// Contains all games that are currently running
     games: Vec<GameInstance>,
+    /// All users that are currently playing in a game.
+    /// 
+    /// Users are added to this vector by either calling [GameManager::create_game()](#method.create_game) or [GameManager::add_player_to_game()](#method.add_player_to_game).
+    users: Vec<User>,
     /// All player ids that are already in use.
     ///
     /// A player id uniquely identifies the given player.
     ///
     /// It is also used to authorize the player against the server.
-    user_ids: Vec<i32>,
-    /// All users that are currently playing in a game.
-    users: Vec<User>,
+    used_user_ids: Vec<i32>,
     /// Stores all game codes that are already in use
     used_game_codes: Vec<GameCode>,
 }
@@ -38,11 +40,11 @@ impl GameManager {
     pub fn new() -> Self {
         Self {
             games: Vec::new(),
-            user_ids: Vec::new(),
+            used_user_ids: Vec::new(),
             users: Vec::new(),
             used_game_codes: Vec::new(),
         }
-    }
+    }    
 
     /// Some debug functionality, should be deleted from final version
     pub fn debug(&mut self) -> GameCode {
@@ -57,21 +59,30 @@ impl GameManager {
         self.generate_game_code()
     }
 
-    /// Creates a new game
+    /// Creates a new game.
     /// 
     /// # Params
-    /// `user` the user that creates this game. This user is used to create a new player. This player will be set as game master.
+    /// `username` the username of the user that creates the game
+    /// `ip_address` the ip address of the user that creates the game. See [User]() for reason why `ip_address` is required.
     /// 
     /// # Returns
     /// `Some(GameCode)` when the game was created
     /// `None` when the game was not created
-    pub fn create_game(&mut self, user: &User) -> Option<GameCode> {
+    pub fn create_game(&mut self, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
         let code = self.generate_game_code();
         let mut game = GameInstance::new(code);
+        let user_id = self.generate_user_id();
+        let user = User::new(ip_address, username, user_id);
         game.add_player(user.name(), user.id());
         game.set_game_master(user.id());
+        self.users.push(user);
         self.used_game_codes.push(code.clone());
-        Some(code)
+        self.used_user_ids.push(user_id);
+        let ip_address_send = match ip_address{
+            Some(_e) => true,
+            None => false,
+        };
+        Some(UserRegistration::new(user_id, code, ip_address_send))
     }
 
     /// Tries to add the player to the game.
@@ -79,18 +90,33 @@ impl GameManager {
     /// This will fail when the game does not exist or the game was already started.
     /// 
     /// # Params
-    /// `user` the user that should be added to the game. This user is used to create a new player.
+    /// `username` the username of the user that should be added to the game
+    /// `ip_address` the ip address of the user that should be added to the game. See [User]() for reason why `ip_address` is required.
     /// 
     /// # Returns
-    /// `true` when the game was created
-    /// `false` when the user was not added to the game
-    pub fn add_player_to_game(&mut self, user: &User, game_code: GameCode) -> bool {
-        match self.game_by_code_mut(game_code) {
+    /// `Some(i32)` when the user was added to the game, contains the unique user id
+    /// `None` when the player was not added to the game, because the game does not exist
+    pub fn add_player_to_game(&mut self, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
+        let user_id = self.generate_user_id();
+        let player_added = match self.game_by_code_mut(game_code) {
             Some(game) => {
+                let user = User::new(ip_address, username, user_id);
                 game.add_player(user.name(), user.id());
+                self.users.push(user);
                 true
             },
             None => false,
+        };
+        if player_added {
+            // Only if the player was added will the new user id be pushed to the vector
+            self.used_user_ids.push(user_id);
+            let ip_address_send = match ip_address{
+                Some(_e) => true,
+                None => false,
+            };
+            Some(UserRegistration::new(user_id, game_code, ip_address_send))
+        } else {
+            None
         }
     }
 
@@ -136,30 +162,6 @@ impl GameManager {
         None
     }
 
-    /// Generates a new game code that is not yet used by another game
-    /// 
-    /// This does not add the generated game code to the used_game_codes vector.
-    pub fn generate_game_code(&self) -> GameCode {
-        let mut rng = thread_rng();
-        loop {
-            let code: String = (0..8)
-                .map(|_| {
-                    let idx = rng.gen_range(0..GAME_CODE_CHARSET.len());
-                    GAME_CODE_CHARSET[idx] as char
-                })
-                .collect();
-            let chars: Vec<char> = code.chars().collect();
-            let code: [char; 8] = [
-                chars[0], chars[1], chars[2], chars[3], chars[4], chars[5], chars[6], chars[7],
-            ];
-            let game_code = GameCode::new(code).unwrap();
-            if self.used_game_codes.contains(&game_code) {
-               continue; 
-            }
-            return GameCode::new(code).unwrap()
-        }
-    }
-
     /// Checks if a game with the game code exists
     pub fn does_game_exist(&self, game_code: &GameCode) -> bool {
         self.used_game_codes.contains(game_code)
@@ -181,6 +183,41 @@ impl GameManager {
             },
             None => None,
         }
+    }
+
+    /// Generates a new game code that is not yet used by another game
+    /// 
+    /// This does not add the generated game code to the used_game_codes vector.
+    fn generate_game_code(&self) -> GameCode {
+        let mut rng = thread_rng();
+        loop {
+            let code: String = (0..8)
+                .map(|_| {
+                    let idx = rng.gen_range(0..GAME_CODE_CHARSET.len());
+                    GAME_CODE_CHARSET[idx] as char
+                })
+                .collect();
+            let chars: Vec<char> = code.chars().collect();
+            let code: [char; 8] = [
+                chars[0], chars[1], chars[2], chars[3], chars[4], chars[5], chars[6], chars[7],
+            ];
+            let game_code = GameCode::new(code).unwrap();
+            if self.used_game_codes.contains(&game_code) {
+               continue; 
+            }
+            return GameCode::new(code).unwrap()
+        }
+    }
+
+    /// Generates a unique user id that is not yet registered in the [user_ids]() vector.
+    /// 
+    /// This does not add the generated id to the [user_ids]() vector.
+    fn generate_user_id(&mut self) -> i32 {
+        let mut number = rand::thread_rng().gen_range(0..=i32::MAX);
+        while self.used_user_ids.contains(&number) {
+            number = rand::thread_rng().gen_range(0..=i32::MAX);
+        }
+        number
     }
 }
 
@@ -249,6 +286,55 @@ impl ToString for GameCode {
         print.push('-');
         print.push_str(parts.1);
         print
+    }
+}
+
+/// User that is playing in a game.
+/// 
+/// User is not the same as [Player](base_game/struct.Player.html):
+/// 
+/// - The `Player` contains all data that is required for the user to play the game.
+/// - The `User` is used for authentication against the server.
+#[derive(PartialEq, Eq)]
+struct User {
+    /// The ip address of the client, used to reconstruct the user id if connection was lost.
+    ip_address: Option<IpAddr>,
+    /// The username of this user.
+    username: String,
+    /// The unique user id of this user.
+    /// 
+    /// This user id is used to uniquely identify each user.
+    user_id: i32,
+}
+
+impl User {
+    /// Creates a new user
+    /// 
+    /// # Params
+    /// `ip_address` the ip address of the client
+    /// `username` the username of the user
+    /// `user_id` a unique user id
+    pub fn new(ip_address: Option<IpAddr>, username: String, user_id: i32) -> Self {
+        Self {
+            ip_address,
+            username,
+            user_id 
+        }
+    }
+
+    /// Returns the name of this user
+    pub fn name(&self) -> String {
+        self.username.clone()
+    }
+
+    /// Returns the ip address of this user
+    pub fn ip_address(&self) -> &Option<IpAddr> {
+        &self.ip_address
+    }
+
+    /// Returns the users id
+    pub fn id(&self) -> i32 {
+        self.user_id
     }
 }
 

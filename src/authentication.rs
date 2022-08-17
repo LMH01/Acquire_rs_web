@@ -63,6 +63,7 @@ impl<'r> FromRequest<'r> for UserAuth {
     }
 }
 
+/// Errors that occur when a request requires a `GameCode`.
 #[derive(Debug)]
 pub enum GameCodeError {
     /// The transmitted game_code header is missing
@@ -100,87 +101,5 @@ impl<'r> FromRequest<'r> for GameCode {
         } else {
             Outcome::Failure((Status::Forbidden, GameCodeError::NotFound))
         }
-    }
-}
-
-/// Used to transmit data to the client with server side events
-#[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
-pub struct EventData {
-    /// Indicates to which player this request is directed.
-    /// This is the player turn number and not the player id.
-    ///
-    /// When this is 0 the message is meant to be relevant for all players.
-    player: usize,
-    /// Indicates for what game this request is relevant
-    ///
-    /// Stores the value of [GameCode::to_string()](../game/struct.GameCode.html#method.to_string)
-    game_code: String,
-    /// Additional data
-    data: String,
-}
-
-impl EventData {
-    /// Construct new event data
-    pub fn new(player: usize, game_code: GameCode, data: String) -> Self {
-        Self {
-            player,
-            game_code: game_code.to_string(),
-            data,
-        }
-    }
-
-    /// # Returns
-    /// The game code to which this data event belongs
-    pub fn game_code(&self) -> String {
-        self.game_code.to_string()
-    }
-}
-
-/// User that is playing in a game.
-/// 
-/// User is not the same as [Player](base_game/struct.Player.html):
-/// 
-/// - The `Player` contains all data that is required for the user to play the game.
-/// - The `User` is used for authentication against the server.
-#[derive(PartialEq, Eq)]
-pub struct User {
-    /// The ip address of the client, used to reconstruct the user id if connection was lost.
-    ip_address: Option<IpAddr>,
-    /// The username of this user.
-    username: String,
-    /// The unique user id of this user.
-    /// 
-    /// This user id is used to uniquely identify each user.
-    user_id: i32,
-}
-
-impl User {
-    /// Creates a new user
-    /// 
-    /// # Params
-    /// `ip_address` the ip address of the client
-    /// `username` the username of the user
-    /// `user_id` a unique user id
-    pub fn new(ip_address: Option<IpAddr>, username: String, user_id: i32) -> Self {
-        Self {
-            ip_address,
-            username,
-            user_id 
-        }
-    }
-
-    /// Returns the name of this user
-    pub fn name(&self) -> String {
-        self.username.clone()
-    }
-
-    /// Returns the ip address of this user
-    pub fn ip_address(&self) -> &Option<IpAddr> {
-        &self.ip_address
-    }
-
-    /// Returns the users id
-    pub fn id(&self) -> i32 {
-        self.user_id
     }
 }
