@@ -1,9 +1,11 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, sync::RwLock};
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rocket::FromForm;
+use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status};
 
-use self::game_instance::GameInstance;
+use crate::request_data::PlayerAuthError;
+
+use self::{game_instance::GameInstance, base_game::Player};
 
 /// Contains all base components that are required to run a game
 pub mod base_game;
@@ -42,6 +44,18 @@ impl GameManager {
         }
     }
 
+    /// Some debug functionality, should be deleted from final version
+    pub fn debug(&mut self) -> GameCode {
+        let mut game = GameInstance::new(self);
+        self.used_game_codes.push(*game.game_code());
+        let code = *game.game_code();
+        game.players.push(Player {name: String::from("Louis"), id: 1});
+        game.players.push(Player {name: String::from("Markus"), id: 1});
+        game.players.push(Player {name: String::from("David"), id: 1});
+        self.games.push(game);
+        code
+    }
+
     /// # Returns
     ///
     /// `Some(&mut Game)` when the game was found where the user is playing in
@@ -53,6 +67,32 @@ impl GameManager {
                 if player.id == id {
                     return Some(game);
                 }
+            }
+        }
+        None
+    }
+
+    /// # Returns
+    /// 
+    /// `Some(&mut Game)` when the game with the game code exists
+    /// `None` the game does not exist
+    pub fn game_by_code(& self, game_code: GameCode) -> Option<& GameInstance> {
+        for game in & self.games {
+            if *game.game_code() == game_code {
+                return Some(game);
+            }
+        }
+        None
+    }
+
+    /// # Returns
+    /// 
+    /// `Some(&mut Game)` when the game with the game code exists
+    /// `None` the game does not exist
+    pub fn game_by_code_mut(&mut self, game_code: GameCode) -> Option<&mut GameInstance> {
+        for game in &mut self.games {
+            if *game.game_code() == game_code {
+                return Some(game);
             }
         }
         None
@@ -83,8 +123,26 @@ impl GameManager {
     }
 
     /// Checks if a game with the game code exists
-    pub fn does_game_exist(&self, game_code: GameCode) -> bool {
-        self.used_game_codes.contains(&game_code)
+    pub fn does_game_exist(&self, game_code: &GameCode) -> bool {
+        self.used_game_codes.contains(game_code)
+    }
+
+    /// Returns the names of the players that are currently joined in the selected game
+    /// 
+    /// # Returns
+    /// `Some(Vec<String>)` when the game exists. Vector of string contains the currently joined players.
+    /// `None` the game does not exist
+    pub fn players_in_game(&self, game_code: GameCode) -> Option<Vec<String>> {
+        match self.game_by_code(game_code) {
+            Some(game) => {
+                let mut player_names = Vec::new();
+                for player in game.players() {
+                    player_names.push(player.name.clone())
+                }
+                Some(player_names)
+            },
+            None => None,
+        }
     }
 }
 

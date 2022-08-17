@@ -5,7 +5,7 @@ use rocket::{
     get,
     http::{ContentType, CookieJar, Status},
     log::private::info,
-    State, Response, response::Redirect,
+    State, Response, response::Redirect, serde::json::Json,
 };
 
 use crate::game::{self, GameCode, GameManager};
@@ -24,7 +24,7 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
         Some(code) => code,
         None => return Err(Redirect::to("/lobby")),
     };
-    if game_manager.write().unwrap().does_game_exist(game_code) {
+    if game_manager.write().unwrap().does_game_exist(&game_code) {
         Ok(NamedFile::open(Path::new("web/protected/lobby.html"))
             .await
             .ok())
@@ -33,11 +33,21 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
     }
 }
 
+/// Return the games players as json string.
+/// 
+/// # Requires
+/// - `game_code` header with valid [GameCode](../game/struct.GameCode.html)
+#[get("/api/players_in_game")]
+pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: GameCode) -> Json<Vec<String>> {
+    let game_manager = game_manager.write().unwrap();
+    info!("{}", game_code.to_string());
+    Json(game_manager.players_in_game(game_code).unwrap())
+}
 
 #[get("/api/debug")]
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr) -> String {
     let mut game_manager = game_manager.write().unwrap();
-    String::from("Hello, World!")
+    String::from(game_manager.debug().to_string())
 }
 
 /// Some utility functions

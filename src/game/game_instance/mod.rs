@@ -7,7 +7,7 @@ mod logic;
 
 /// Representation of a game
 pub struct GameInstance {
-    players: Vec<Player>,
+    pub players: Vec<Player>,//TODO Make private again
     /// Unique 9 character id that identifies
     game_code: GameCode,
 }

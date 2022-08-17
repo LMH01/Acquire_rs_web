@@ -3,11 +3,6 @@ function lobby() {
     addPlayer(document.getElementById("player-name").value);
 }
 
-function revealPlayers() {
-    document.getElementById("player-list").hidden = false;
-    document.getElementById("player-list-container-loading").hidden = true;
-}
-
 async function demo() {
     var gameCode = await fetchData('api/debug');
     document.getElementById("game-code").innerHTML = gameCode;
@@ -39,3 +34,36 @@ function addPlayer(name, highlighted) {
     div.innerHTML = name;
     document.getElementById("player-list").append(div);
 }
+
+/**
+ * Returns the game code extracted from the URL
+ */
+function gameCodeFromURL() {
+    return window.location.pathname.replace("/lobby/", "");
+}
+
+/**
+ * Reveals the inner container that contains the player list and the game code
+ */
+async function revealInnerContainer() {
+    document.getElementById("lobby-inner-container").hidden = false;
+    document.getElementById("game-code").innerHTML = gameCodeFromURL();
+    document.getElementById("game-code").hidden = false;
+    document.getElementById("game-code-placeholder").hidden = true;
+    // TODO Request to server for list of players
+    var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
+    for (const user of response) {
+        addPlayer(user, false);
+    }
+    document.getElementById("player-list").hidden = false;
+    document.getElementById("player-list-placeholder").hidden = true;
+}
+
+document.addEventListener("DOMContentLoaded", function(){
+    console.info("Initializing page state");
+    if (window.location.pathname != '/lobby') {
+        console.debug("Initializing page to reflect join game state");
+        document.getElementById("enter-player-name").innerHTML = "Join Game";
+        revealInnerContainer();
+    }
+});
