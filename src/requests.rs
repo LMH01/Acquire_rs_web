@@ -56,7 +56,7 @@ mod utils {
 
     use crate::{
         game::{game_instance::GameInstance, GameManager},
-        request_data::UserAuth,
+        authentication::UserAuth,
     };
 
     /// Returns the game a player is assigned to by using the `player_auth`

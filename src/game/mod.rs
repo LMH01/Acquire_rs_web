@@ -3,7 +3,7 @@ use std::{net::IpAddr, sync::RwLock};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status};
 
-use crate::request_data::PlayerAuthError;
+use crate::{authentication::User};
 
 use self::{game_instance::GameInstance, base_game::Player};
 
@@ -46,14 +46,52 @@ impl GameManager {
 
     /// Some debug functionality, should be deleted from final version
     pub fn debug(&mut self) -> GameCode {
-        let mut game = GameInstance::new(self);
-        self.used_game_codes.push(*game.game_code());
-        let code = *game.game_code();
-        game.players.push(Player {name: String::from("Louis"), id: 1});
-        game.players.push(Player {name: String::from("Markus"), id: 1});
-        game.players.push(Player {name: String::from("David"), id: 1});
-        self.games.push(game);
-        code
+        //let code = *game.game_code();
+        //let mut game = GameInstance::new(self);
+        //self.used_game_codes.push(*game.game_code());
+        //game.players.push(Player {name: String::from("Louis"), id: 1});
+        //game.players.push(Player {name: String::from("Markus"), id: 1});
+        //game.players.push(Player {name: String::from("David"), id: 1});
+        //self.games.push(game);
+        //code
+        self.generate_game_code()
+    }
+
+    /// Creates a new game
+    /// 
+    /// # Params
+    /// `user` the user that creates this game. This user is used to create a new player. This player will be set as game master.
+    /// 
+    /// # Returns
+    /// `Some(GameCode)` when the game was created
+    /// `None` when the game was not created
+    pub fn create_game(&mut self, user: &User) -> Option<GameCode> {
+        let code = self.generate_game_code();
+        let mut game = GameInstance::new(code);
+        game.add_player(user.name(), user.id());
+        game.set_game_master(user.id());
+        self.used_game_codes.push(code.clone());
+        Some(code)
+    }
+
+    /// Tries to add the player to the game.
+    /// 
+    /// This will fail when the game does not exist or the game was already started.
+    /// 
+    /// # Params
+    /// `user` the user that should be added to the game. This user is used to create a new player.
+    /// 
+    /// # Returns
+    /// `true` when the game was created
+    /// `false` when the user was not added to the game
+    pub fn add_player_to_game(&mut self, user: &User, game_code: GameCode) -> bool {
+        match self.game_by_code_mut(game_code) {
+            Some(game) => {
+                game.add_player(user.name(), user.id());
+                true
+            },
+            None => false,
+        }
     }
 
     /// # Returns
@@ -64,7 +102,7 @@ impl GameManager {
     pub fn game_by_user_id(&mut self, id: i32) -> Option<&mut GameInstance> {
         for game in &mut self.games {
             for player in game.players() {
-                if player.id == id {
+                if player.id() == id {
                     return Some(game);
                 }
             }
@@ -137,7 +175,7 @@ impl GameManager {
             Some(game) => {
                 let mut player_names = Vec::new();
                 for player in game.players() {
-                    player_names.push(player.name.clone())
+                    player_names.push(String::from(player.name()))
                 }
                 Some(player_names)
             },
@@ -212,24 +250,6 @@ impl ToString for GameCode {
         print.push_str(parts.1);
         print
     }
-}
-
-/// User that is playing in a game.
-/// 
-/// User is not the same as [Player](base_game/struct.Player.html):
-/// 
-/// - The `Player` contains all data that is required for the user to play the game.
-/// - The `User` is used for authentication against the server.
-#[derive(PartialEq, Eq)]
-pub struct User {
-    /// The ip address of the client, used to reconstruct the user id if connection was lost.
-    ip_address: Option<IpAddr>,
-    /// The username of this user.
-    username: String,
-    /// The unique user id of this user.
-    /// 
-    /// This user id is used to uniquely identify each user.
-    user_id: i32,
 }
 
 #[cfg(test)]
