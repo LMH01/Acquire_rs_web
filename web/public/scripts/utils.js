@@ -10,8 +10,10 @@
 async function postData(url = '', data = {}, additional_headers) {
   const headers = new Headers;
   headers.append('Content-Type', 'application/json');
-  for (const [key, value] of Object.entries(additional_headers)) {
-    headers.append(key, value);
+  if (additional_headers != undefined || additional_headers && null) {
+    for (const [key, value] of Object.entries(additional_headers)) {
+      headers.append(key, value);
+    }
   }
   // Default options are marked with *
   const response = await fetch(url, {
@@ -54,4 +56,25 @@ async function fetchData(url, additional_headers) {
   }));
   var json = await response.json();
   return json;
+}
+
+/**
+ * Returns the value of the specified cookie
+ * Copied from https://www.w3schools.com/js/js_cookies.asp - A Function to Get a Cookie
+ * @param {String} cname 
+ */
+function getCookie(cname) {
+  let name = cname + "=";
+  let decodedCookie = decodeURIComponent(document.cookie);
+  let ca = decodedCookie.split(';');
+  for(let i = 0; i <ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) == ' ') {
+      c = c.substring(1);
+    }
+    if (c.indexOf(name) == 0) {
+      return c.substring(name.length, c.length);
+    }
+  }
+  return null;
 }

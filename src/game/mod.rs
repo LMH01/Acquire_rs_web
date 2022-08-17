@@ -78,6 +78,7 @@ impl GameManager {
         self.users.push(user);
         self.used_game_codes.push(code.clone());
         self.used_user_ids.push(user_id);
+        self.games.push(game);
         let ip_address_send = match ip_address{
             Some(_e) => true,
             None => false,
