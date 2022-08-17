@@ -1,14 +1,15 @@
-use std::{path::Path, sync::RwLock, net::IpAddr};
+use std::{path::Path, sync::RwLock, net::IpAddr, collections::HashMap};
 
 use rocket::{
     fs::NamedFile,
     get,
     http::{ContentType, CookieJar, Status},
     log::private::info,
-    State, Response, response::Redirect, serde::json::Json, post,
+    State, Response, response::{Redirect, stream::{EventStream, Event}}, serde::json::Json, post, Shutdown, tokio::sync::broadcast::Sender,
+    tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{self, GameCode, GameManager}, request_data::{UserRegistration, Username}};
+use crate::{game::{GameCode, GameManager}, request_data::{UserRegistration, Username, EventData}};
 
 #[get("/lobby")]
 pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFile> {
@@ -68,9 +69,45 @@ pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: Gam
     Json(game_manager.players_in_game(game_code).unwrap())
 }
 
-#[get("/api/debug")]
-pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr) -> String {
+/// Server send events
+/// 
+/// For each game a separate sse stream exists, these streams are accessed by submitting a get request to `/sse/<game_code>`.
+/// 
+/// This makes it possible to have multiple games run in parallel without interferences in the sse streams.
+/// 
+/// Only sse events that match the `game_code` will be transmitted back.
+#[get("/sse/<game_code>")]
+pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: String) -> Option<EventStream![]> {
+    let mut rx = event.subscribe();
+    match GameCode::from_string(&game_code) {
+        Some(code) => {
+            Some(EventStream! {
+                loop {
+                    let msg = select! {
+                        msg = rx.recv() => match msg {
+                            Ok(msg) => msg,
+                            Err(RecvError::Closed) => break,
+                            Err(RecvError::Lagged(_)) => continue,
+                        },
+                        _ = &mut end => break,
+                    };
+                    let msg_game_code = msg.game_code();
+                    if msg_game_code == code.to_string() {
+                        yield Event::json(&msg);
+                    }
+                }
+            })
+        },
+        None => None,
+    }
+}
+
+#[get("/api/debug/<game_code>")]
+pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, game_code: &str) -> String {
     let mut game_manager = game_manager.write().unwrap();
+    let mut map = HashMap::new();
+    map.insert(String::from("Hallo"), String::from("Welt"));
+    let _e = event.send(EventData::new(0, GameCode::from_string(game_code).unwrap(), map));
     String::from(game_manager.debug().to_string())
 }
 

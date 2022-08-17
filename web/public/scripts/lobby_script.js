@@ -90,6 +90,39 @@ async function revealInnerContainer() {
     document.getElementById("player-list-placeholder").hidden = true;
 }
 
+/**
+ * Subscribes to the event listener at /sse
+ */
+function subscribeEvents() {
+  function connect() {
+    let game_code = gameCodeFromURL();
+    const events = new EventSource("/sse/" + game_code);
+
+    events.addEventListener("message", (env) => {
+      var data = env.data;
+      var msg = JSON.parse(data);
+      console.log(msg);
+      switch (msg.data.Hallo) {
+        case "Welt": 
+            console.log("Hello, World!");
+          break;
+      }
+    });
+
+    events.addEventListener("open", () => {
+      console.info(`Connected to event stream at /sse/` + game_code);
+    });
+
+    events.addEventListener("error", () => {
+      console.error("connection to event stream at /sse/" + game_code + " lost");
+      console.info("Closing event stream for /sse/" + game_code);
+      events.close();
+    });
+  }
+
+  connect();
+}
+
 document.addEventListener("DOMContentLoaded", function(){
     console.info("Initializing page state");
     if (localStorage.getItem('user_id') != undefined) {
@@ -104,6 +137,7 @@ document.addEventListener("DOMContentLoaded", function(){
         document.getElementById("create-or-join-game").disabled = true;
         document.getElementById("player-name").value = window.user_name;
         document.getElementById("player-name").disabled = true;
+        subscribeEvents();
     } else {
         if (window.location.pathname != '/lobby' && window.location.pathname != '/lobby/') {
             console.debug("Initializing page to reflect join game state");

@@ -1,9 +1,10 @@
 use std::sync::RwLock;
 
 use game::GameManager;
+use request_data::EventData;
 use rocket::{
     fs::{relative, FileServer},
-    launch, routes,
+    launch, routes, tokio::sync::broadcast::channel,
 };
 
 use crate::requests::*;
@@ -26,8 +27,9 @@ mod requests;
 fn rocket() -> _ {
     rocket::build()
         .mount("/", FileServer::from(relative!("web/public")))
-        .mount("/", routes![lobby, lobby_join, create_game, create_game_without_ip, players_in_game, debug])
+        .mount("/", routes![events, lobby, lobby_join, create_game, create_game_without_ip, players_in_game, debug])
         .manage(RwLock::new(GameManager::new()))
+        .manage(channel::<EventData>(1024).0)
 }
 
 // TODO
