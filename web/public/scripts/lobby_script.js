@@ -8,6 +8,14 @@ function revealPlayers() {
     document.getElementById("player-list-container-loading").hidden = true;
 }
 
+async function demo() {
+    var gameCode = await fetchData('api/debug');
+    document.getElementById("game-code").innerHTML = gameCode;
+    document.getElementById("game-code").hidden = false;
+    document.getElementById("game-code-placeholder").hidden = true;
+    document.getElementById("lobby-inner-container").hidden = false;
+}
+
 /**
  * Adds the player to the player list
  * @param {String} name the name of the player that should be added
