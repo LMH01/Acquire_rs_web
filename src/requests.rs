@@ -1,18 +1,20 @@
-use std::path::Path;
+use std::{path::Path, sync::RwLock};
 
-use rocket::{http::CookieJar, fs::NamedFile, get, log::private::info};
+use rocket::{http::{CookieJar, ContentType}, fs::NamedFile, get, log::private::info, State};
 
-use crate::game::GameCode;
+use crate::game::{GameCode, GameManager, self};
 
 #[get("/lobby")]
-pub async fn lobby() -> Option<NamedFile> {
-    let mut x = Vec::new();
-    for i in 1..=8 {
-        x.push(char::from_digit(i, 10).unwrap());
-    }
-    let game_code = GameCode::new(x).unwrap();
-    info!("Game code: {:?}", game_code.to_string());
+pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFile> {
     NamedFile::open(Path::new("web/protected/lobby.html")).await.ok()
+}
+
+#[get("/api/debug")]
+pub fn debug(game_manager: &State<RwLock<GameManager>>) -> String {
+    let game_manager = game_manager.write().unwrap();
+    let game_code = game_manager.generate_game_code();
+    //info!("Game code: {:?}", game_code.to_string());
+    game_code.to_string()
 }
 
 /// Retrieves the user id from the `userid` cookie

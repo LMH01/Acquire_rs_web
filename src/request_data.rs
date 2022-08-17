@@ -54,6 +54,8 @@ pub struct EventData {
     /// When this is 0 the message is meant to be relevant for all players.
     player: usize,
     /// Indicates for what game this request is relevant
+    /// 
+    /// Stores the value of [GameCode::to_string()](../game/struct.GameCode.html#method.to_string)
     game_code: String,
     /// Additional data
     data: String,
