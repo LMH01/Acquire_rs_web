@@ -24,7 +24,7 @@ mod requests;
 fn rocket() -> _ {
     rocket::build()
         .mount("/", FileServer::from(relative!("web/public")))
-        .mount("/", routes![lobby, debug])
+        .mount("/", routes![lobby, lobby_join, debug])
         .manage(RwLock::new(GameManager::new()))
 }
 

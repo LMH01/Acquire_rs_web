@@ -1,11 +1,11 @@
-use std::{path::Path, sync::RwLock};
+use std::{path::Path, sync::RwLock, net::IpAddr};
 
 use rocket::{
     fs::NamedFile,
     get,
-    http::{ContentType, CookieJar},
+    http::{ContentType, CookieJar, Status},
     log::private::info,
-    State,
+    State, Response, response::Redirect,
 };
 
 use crate::game::{self, GameCode, GameManager};
@@ -17,23 +17,27 @@ pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFil
         .ok()
 }
 
-#[get("/api/debug")]
-pub fn debug(game_manager: &State<RwLock<GameManager>>) -> String {
-    let game_manager = game_manager.write().unwrap();
-    let game_code = game_manager.generate_game_code();
-    //info!("Game code: {:?}", game_code.to_string());
-    game_code.to_string()
+#[get("/lobby/<game_code>")]
+pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &str) -> Result<Option<NamedFile>, Redirect> {
+    info!("Game code: {}", game_code);
+    let game_code = match GameCode::from_string(game_code) {
+        Some(code) => code,
+        None => return Err(Redirect::to("/lobby")),
+    };
+    if game_manager.write().unwrap().does_game_exist(game_code) {
+        Ok(NamedFile::open(Path::new("web/protected/lobby.html"))
+            .await
+            .ok())
+    } else {
+        Err(Redirect::to("/lobby"))
+    }
 }
 
-/// Retrieves the player id from the `player_id` cookie
-///
-/// # Returns
-/// 'Some(i32)' when the id was found
-/// 'None' when the player id was not found or the cookie was not set
-pub fn player_id_from_cookies(cookies: &CookieJar<'_>) -> Option<i32> {
-    cookies
-        .get("player_id")
-        .map(|cookie| cookie.value().parse().unwrap())
+
+#[get("/api/debug")]
+pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr) -> String {
+    let mut game_manager = game_manager.write().unwrap();
+    String::from("Hello, World!")
 }
 
 /// Some utility functions
@@ -42,15 +46,15 @@ mod utils {
 
     use crate::{
         game::{game_instance::GameInstance, GameManager},
-        request_data::PlayerAuth,
+        request_data::UserAuth,
     };
 
     /// Returns the game a player is assigned to by using the `player_auth`
     pub fn game_by_player_auth<'a>(
         game_manager: &'a mut RwLockWriteGuard<GameManager>,
-        player_auth: PlayerAuth,
+        player_auth: UserAuth,
     ) -> Option<&'a mut GameInstance> {
-        match game_manager.game_by_player_id(player_auth.player_id) {
+        match game_manager.game_by_user_id(player_auth.user_id) {
             Some(game) => Some(game),
             None => None,
         }

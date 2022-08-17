@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::FromForm;
 
@@ -23,7 +25,9 @@ pub struct GameManager {
     /// A player id uniquely identifies the given player.
     ///
     /// It is also used to authorize the player against the server.
-    player_ids: Vec<i32>,
+    user_ids: Vec<i32>,
+    /// All users that are currently playing in a game.
+    users: Vec<User>,
     /// Stores all game codes that are already in use
     used_game_codes: Vec<GameCode>,
 }
@@ -32,17 +36,18 @@ impl GameManager {
     pub fn new() -> Self {
         Self {
             games: Vec::new(),
-            player_ids: Vec::new(),
+            user_ids: Vec::new(),
+            users: Vec::new(),
             used_game_codes: Vec::new(),
         }
     }
 
     /// # Returns
     ///
-    /// `Some(&mut Game)` when the game was found where the player is playing in
+    /// `Some(&mut Game)` when the game was found where the user is playing in
     ///
-    /// `None` the player id does not appear to be assigned to a game
-    pub fn game_by_player_id(&mut self, id: i32) -> Option<&mut GameInstance> {
+    /// `None` the user id does not appear to be assigned to a game
+    pub fn game_by_user_id(&mut self, id: i32) -> Option<&mut GameInstance> {
         for game in &mut self.games {
             for player in game.players() {
                 if player.id == id {
@@ -54,26 +59,39 @@ impl GameManager {
     }
 
     /// Generates a new game code that is not yet used by another game
+    /// 
+    /// This does not add the generated game code to the used_game_codes vector.
     pub fn generate_game_code(&self) -> GameCode {
         let mut rng = thread_rng();
-        let code: String = (0..8)
-            .map(|_| {
-                let idx = rng.gen_range(0..GAME_CODE_CHARSET.len());
-                GAME_CODE_CHARSET[idx] as char
-            })
-            .collect();
-        let chars: Vec<char> = code.chars().collect();
-        let code: [char; 8] = [
-            chars[0], chars[1], chars[2], chars[3], chars[4], chars[5], chars[6], chars[7],
-        ];
-        GameCode::new(code).unwrap()
+        loop {
+            let code: String = (0..8)
+                .map(|_| {
+                    let idx = rng.gen_range(0..GAME_CODE_CHARSET.len());
+                    GAME_CODE_CHARSET[idx] as char
+                })
+                .collect();
+            let chars: Vec<char> = code.chars().collect();
+            let code: [char; 8] = [
+                chars[0], chars[1], chars[2], chars[3], chars[4], chars[5], chars[6], chars[7],
+            ];
+            let game_code = GameCode::new(code).unwrap();
+            if self.used_game_codes.contains(&game_code) {
+               continue; 
+            }
+            return GameCode::new(code).unwrap()
+        }
+    }
+
+    /// Checks if a game with the game code exists
+    pub fn does_game_exist(&self, game_code: GameCode) -> bool {
+        self.used_game_codes.contains(&game_code)
     }
 }
 
 /// Unique 9 character code that identifies a game
 ///
 /// A code will look like this when `to_string` is called: AB2S-B4D2
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameCode {
     game_code: [char; 8],
 }
@@ -83,6 +101,43 @@ impl GameCode {
     fn new(random_chars: [char; 8]) -> Option<Self> {
         Some(Self {
             game_code: random_chars,
+        })
+    }
+
+    /// Construct a new game code from string
+    /// 
+    /// Input should be a in the format like the result of [GameCode::to_string()](#method.to_string).
+    /// 
+    /// # Returns
+    /// `Some(Self)` when the string was valid and the game code was constructed
+    /// `None` when the string could not be constructed into a game code
+    pub fn from_string(string: &str) -> Option<Self> {
+        let mut game_code: [char; 8] = ['a','a','a','a','a','a','a','a'];
+        if string.len() > 9 {
+            return None;
+        }
+        let mut second_half = false;
+        for (index, char) in string.chars().enumerate() {
+            let charset: Vec<char> = GAME_CODE_CHARSET.iter().map(|s| *s as char).collect();
+            if index != 4 {
+                if charset.contains(&char) {
+                    if second_half {
+                        game_code[index-1] = char;
+                    } else {
+                        game_code[index] = char;
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                if char != '-' {
+                    return None;
+                }
+                second_half = true;
+            }
+        } 
+        Some(Self {
+            game_code
         })
     }
 }
@@ -98,5 +153,33 @@ impl ToString for GameCode {
         print.push('-');
         print.push_str(parts.1);
         print
+    }
+}
+
+/// User that is playing in a game.
+/// 
+/// User is not the same as [Player](base_game/struct.Player.html):
+/// 
+/// - The `Player` contains all data that is required for the user to play the game.
+/// - The `User` is used for authentication against the server.
+#[derive(PartialEq, Eq)]
+pub struct User {
+    /// The ip address of the client, used to reconstruct the user id if connection was lost.
+    ip_address: Option<IpAddr>,
+    /// The username of this user.
+    username: String,
+    /// The unique user id of this user.
+    /// 
+    /// This user id is used to uniquely identify each user.
+    user_id: i32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GameCode;
+
+    #[test]
+    fn test_game_code_from_string() {
+        assert_eq!("ABCD-1234", GameCode::from_string("ABCD-1234").unwrap().to_string());
     }
 }
