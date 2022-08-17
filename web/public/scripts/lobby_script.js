@@ -46,13 +46,17 @@ function gameCodeFromURL() {
 }
 
 async function createOrJoinGame() {
-    if (document.getElementById("create-or-join-game").innerHTML = "Create Game") {
+    console.log(document.getElementById("create-or-join-game").innerHTML);
+    if (document.getElementById("create-or-join-game").innerHTML == "Create Game") {
         createGame();
     } else {
         joinGame();
     }
 }
 
+/**
+ * Create a new game
+ */
 async function createGame() {
     if (document.getElementById("player-name").value == "") {
         alert("Please enter a username");//TODO Maybe make the popup nicer with bootstrap
@@ -66,8 +70,12 @@ async function createGame() {
     window.location.href = "/lobby/" + response.game_code;
 }
 
+/**
+ * Join a game
+ */
 async function joinGame() {
-
+    let username = document.getElementById("player-name").value;
+    let response = await postData("../api/join_game", {username: username}, new Map([["game_code", gameCodeFromURL()]]));
 }
 
 /**
@@ -102,9 +110,9 @@ function subscribeEvents() {
       var data = env.data;
       var msg = JSON.parse(data);
       console.log(msg);
-      switch (msg.data.Hallo) {
-        case "Welt": 
-            console.log("Hello, World!");
+      switch (msg.data[0]) {
+        case "AddPlayer":
+            addPlayer(msg.data[1], false);
           break;
       }
     });
@@ -124,6 +132,7 @@ function subscribeEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", function(){
+    document.getElementById("create-or-join-game").innerHTML = "Create Game";
     console.info("Initializing page state");
     if (localStorage.getItem('user_id') != undefined) {
         console.info("Detected local storage, rebuilding page state");

@@ -11,7 +11,7 @@ async function postData(url = '', data = {}, additional_headers) {
   const headers = new Headers;
   headers.append('Content-Type', 'application/json');
   if (additional_headers != undefined || additional_headers && null) {
-    for (const [key, value] of Object.entries(additional_headers)) {
+    for (const [key, value] of additional_headers) {
       headers.append(key, value);
     }
   }

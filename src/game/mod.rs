@@ -1,9 +1,9 @@
-use std::{net::IpAddr, sync::RwLock};
+use std::{net::IpAddr, sync::RwLock, collections::HashMap};
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status};
+use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender};
 
-use crate::{request_data::UserRegistration};
+use crate::{request_data::{UserRegistration, EventData}};
 
 use self::{game_instance::GameInstance, base_game::Player};
 
@@ -97,11 +97,11 @@ impl GameManager {
     /// # Returns
     /// `Some(i32)` when the user was added to the game, contains the unique user id
     /// `None` when the player was not added to the game, because the game does not exist
-    pub fn add_player_to_game(&mut self, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
+    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
         let user_id = self.generate_user_id();
         let player_added = match self.game_by_code_mut(game_code) {
             Some(game) => {
-                let user = User::new(ip_address, username, user_id);
+                let user = User::new(ip_address, username.clone(), user_id);
                 game.add_player(user.name(), user.id());
                 self.users.push(user);
                 true
@@ -115,6 +115,7 @@ impl GameManager {
                 Some(_e) => true,
                 None => false,
             };
+            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), username)));
             Some(UserRegistration::new(user_id, game_code, ip_address_send))
         } else {
             None

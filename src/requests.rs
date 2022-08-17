@@ -58,6 +58,30 @@ pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, usernam
     }
 }
 
+/// 
+/// # Requires
+/// The user needs to send a username formatted in a json string in the post request body.
+#[post("/api/join_game", data = "<username>", rank = 1)]
+pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, ip_addr: IpAddr, game_code: GameCode) -> Option<Json<UserRegistration>> {
+    let mut game_manager = game_manager.write().unwrap();
+    match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ip_addr)) {
+        Some(registration) => Some(Json(registration)),
+        None => None,
+    }
+}
+
+/// 
+/// # Requires
+/// The user needs to send a username formatted in a json string in the post request body.
+#[post("/api/join_game", data = "<username>", rank = 2)]
+pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Option<Json<UserRegistration>> {
+    let mut game_manager = game_manager.write().unwrap();
+    match game_manager.add_player_to_game(event, game_code, String::from(username.username), None) {
+        Some(registration) => Some(Json(registration)),
+        None => None,
+    }
+}
+
 /// Return the games players as json string.
 /// 
 /// # Requires
@@ -105,9 +129,7 @@ pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: St
 #[get("/api/debug/<game_code>")]
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, game_code: &str) -> String {
     let mut game_manager = game_manager.write().unwrap();
-    let mut map = HashMap::new();
-    map.insert(String::from("Hallo"), String::from("Welt"));
-    let _e = event.send(EventData::new(0, GameCode::from_string(game_code).unwrap(), map));
+    let _e = event.send(EventData::new(0, GameCode::from_string(game_code).unwrap(), (String::from("AddPlayer"), String::from("World"))));
     String::from(game_manager.debug().to_string())
 }
 
