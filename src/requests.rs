@@ -95,13 +95,13 @@ pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: Gam
 
 /// Server send events
 /// 
-/// For each game a separate sse stream exists, these streams are accessed by submitting a get request to `/sse/<game_code>`.
+/// For each game and user a separate sse stream exists, these streams are accessed by submitting a get request to `/sse/<game_code>/<user_id>`.
 /// 
 /// This makes it possible to have multiple games run in parallel without interferences in the sse streams.
 /// 
-/// Only sse events that match the `game_code` will be transmitted back.
-#[get("/sse/<game_code>")]
-pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: String) -> Option<EventStream![]> {
+/// Only sse events that match the `game_code` and `user_id` will be transmitted back.
+#[get("/sse/<game_code>/<user_id>")]
+pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: String, user_id: i32) -> Option<EventStream![]> {
     let mut rx = event.subscribe();
     match GameCode::from_string(&game_code) {
         Some(code) => {
@@ -116,7 +116,8 @@ pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: St
                         _ = &mut end => break,
                     };
                     let msg_game_code = msg.game_code();
-                    if msg_game_code == code.to_string() {
+                    let msg_user_id = msg.user_id();
+                    if msg_game_code == code.to_string() && ((msg_user_id == user_id) || msg_user_id == 0) {
                         yield Event::json(&msg);
                     }
                 }

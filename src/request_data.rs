@@ -31,23 +31,22 @@ impl UserRegistration {
 #[derive(Debug, Clone, FromForm, Serialize, Deserialize)]
 pub struct EventData {
     /// Indicates to which player this request is directed.
-    /// This is the player turn number and not the player id.
     ///
     /// When this is 0 the message is meant to be relevant for all players.
-    player: usize,
+    user_id: i32,
     /// Indicates for what game this request is relevant
     ///
     /// Stores the value of [GameCode::to_string()](../game/struct.GameCode.html#method.to_string)
     game_code: String,
-    /// Additional data 1
+    /// Additional data
     data: (String, String),
 }
 
 impl EventData {
     /// Construct new event data
-    pub fn new(player: usize, game_code: GameCode, data: (String, String)) -> Self {
+    pub fn new(user_id: i32, game_code: GameCode, data: (String, String)) -> Self {
         Self {
-            player,
+            user_id,
             game_code: game_code.to_string(),
             data,
         }
@@ -57,6 +56,12 @@ impl EventData {
     /// The game code to which this data event belongs
     pub fn game_code(&self) -> String {
         self.game_code.to_string()
+    }
+
+    /// # Returns
+    /// The user id for which the event is relevant
+    pub fn user_id(&self) -> i32 {
+        self.user_id
     }
 }
 

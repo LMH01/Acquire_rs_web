@@ -1,5 +1,6 @@
 let user_id;
 let user_name;
+let game_code;
 
 function lobby() {
     console.log("Adding new player to list")
@@ -58,8 +59,7 @@ async function createOrJoinGame() {
  * Create a new game
  */
 async function createGame() {
-    if (document.getElementById("player-name").value == "") {
-        alert("Please enter a username");//TODO Maybe make the popup nicer with bootstrap
+    if (!usernameEntered()) {
         return;
     }
     let username = document.getElementById("player-name").value;
@@ -74,8 +74,17 @@ async function createGame() {
  * Join a game
  */
 async function joinGame() {
+    if (!usernameEntered()) {
+        return;
+    }
     let username = document.getElementById("player-name").value;
     let response = await postData("../api/join_game", {username: username}, new Map([["game_code", gameCodeFromURL()]]));
+    window.user_name = username;
+    window.user_id = response.user_id;
+    window.game_code = response.game_code;
+    subscribeEvents(window.user_id);
+    reloadPlayerList();
+    setJoinedGameComponents();
 }
 
 /**
@@ -99,12 +108,51 @@ async function revealInnerContainer() {
 }
 
 /**
+ * Checks if a username is entered in the `player-name` input field
+ * If no name is entered a warning is shown
+ */
+function usernameEntered() {
+    if (document.getElementById("player-name").value == "") {
+        alert("Please enter a username");//TODO Maybe make the popup nicer with bootstrap
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Sets the html components of the page to reflect that the player has joined the game
+ */
+function setJoinedGameComponents() {
+    document.getElementById("create-or-join-game").innerHTML = "Already Joined";
+    document.getElementById("create-or-join-game").className = "btn btn-secondary";
+    document.getElementById("create-or-join-game").disabled = true;
+    document.getElementById("player-name").value = window.user_name;
+    document.getElementById("player-name").disabled = true;
+}
+
+/**
+ * Reloads the list of joined players
+ */
+async function reloadPlayerList() {
+    var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
+    document.getElementById("player-list").innerHTML = "";
+    for (const user of response) {
+        if (user == window.user_name) {
+            addPlayer(user, true);
+        } else {
+            addPlayer(user, false);
+        }
+    }
+}
+
+/**
  * Subscribes to the event listener at /sse
  */
-function subscribeEvents() {
+function subscribeEvents(user_id) {
   function connect() {
     let game_code = gameCodeFromURL();
-    const events = new EventSource("/sse/" + game_code);
+    let path = game_code + "/" + user_id;
+    const events = new EventSource("/sse/" + path);
 
     events.addEventListener("message", (env) => {
       var data = env.data;
@@ -118,12 +166,12 @@ function subscribeEvents() {
     });
 
     events.addEventListener("open", () => {
-      console.info(`Connected to event stream at /sse/` + game_code);
+      console.info(`Connected to event stream at /sse/` + path);
     });
 
     events.addEventListener("error", () => {
-      console.error("connection to event stream at /sse/" + game_code + " lost");
-      console.info("Closing event stream for /sse/" + game_code);
+      console.error("connection to event stream at /sse/" + path + " lost");
+      console.info("Closing event stream for /sse/" + path);
       events.close();
     });
   }
@@ -141,12 +189,8 @@ document.addEventListener("DOMContentLoaded", function(){
         localStorage.removeItem('user_id');
         localStorage.removeItem('user_name');
         revealInnerContainer();
-        document.getElementById("create-or-join-game").innerHTML = "Already Joined";
-        document.getElementById("create-or-join-game").className = "btn btn-secondary";
-        document.getElementById("create-or-join-game").disabled = true;
-        document.getElementById("player-name").value = window.user_name;
-        document.getElementById("player-name").disabled = true;
-        subscribeEvents();
+        setJoinedGameComponents();
+        subscribeEvents(window.user_id);
     } else {
         if (window.location.pathname != '/lobby' && window.location.pathname != '/lobby/') {
             console.debug("Initializing page to reflect join game state");

@@ -215,9 +215,9 @@ impl GameManager {
     /// 
     /// This does not add the generated id to the [user_ids]() vector.
     fn generate_user_id(&mut self) -> i32 {
-        let mut number = rand::thread_rng().gen_range(0..=i32::MAX);
+        let mut number = rand::thread_rng().gen_range(1..=i32::MAX);
         while self.used_user_ids.contains(&number) {
-            number = rand::thread_rng().gen_range(0..=i32::MAX);
+            number = rand::thread_rng().gen_range(1..=i32::MAX);
         }
         number
     }
