@@ -313,6 +313,16 @@ impl GameManager {
             None => None
         }
     }
+
+    /// Returns the `users` vector
+    pub fn users(&self) -> &Vec<User> {
+        &self.users
+    }
+
+    /// Returns the `users` vector as mutable
+    pub fn users_mut(&mut self) -> &mut Vec<User> {
+        &mut self.users
+    }
 }
 
 
@@ -465,7 +475,7 @@ impl ToString for GameCode {
 /// - The `Player` contains all data that is required for the user to play the game.
 /// - The `User` is used for authentication against the server.
 #[derive(PartialEq, Eq)]
-struct User {
+pub struct User {
     /// The ip address of the client, used to reconstruct the user id if connection was lost.
     ip_address: Option<IpAddr>,
     /// The username of this user.

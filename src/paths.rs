@@ -1,4 +1,4 @@
-use std::{path::Path, sync::RwLock, net::IpAddr, collections::HashMap};
+use std::{path::Path, sync::RwLock, net::IpAddr, collections::HashMap, time::Duration, thread};
 
 use rocket::{
     fs::NamedFile,
@@ -9,7 +9,7 @@ use rocket::{
     tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{GameCode, GameManager, user_disconnected}, request_data::{UserRegistration, Username, EventData}};
+use crate::{game::{GameCode, GameManager, user_disconnected, UserDisconnectedStatus}, request_data::{UserRegistration, Username, EventData}};
 
 #[get("/lobby")]
 pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFile> {
@@ -151,6 +151,54 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
     let status = user_disconnected(game_manager, user_id);
     String::from(format!("{:?}", status))
+}
+
+/// Acquires the game_manager lock and releases it again after 10 seconds.
+/// 
+/// After another `time` seconds the lock is reacquired and held for 5 more seconds.
+/// 
+/// This can be used to check behavior of other function when the `game_manager` lock could not be acquired.
+#[get("/api/debug/keep_busy/<id>/<time>")]
+pub fn debug_busy(game_manager: &State<RwLock<GameManager>>, id: i32, time: i32) -> String {
+    info!("Starting debug {}", id);
+    {
+        let mut manager = match game_manager.try_write() {
+            Ok(manager) => {
+                manager
+            },
+            Err(_err) => {
+                info!("Debug {}: Write lock for game manager could not be acquired, waiting...", id);
+                game_manager.write().unwrap()
+            }
+        };
+        info!("Debug {}: Acquired write lock for game manger", id);
+        for i in (1..=10).rev() {
+            info!("Debug {}: Releasing lock in: {} ", id, i);
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
+    info!("Debug {}: Releasing lock for game manager", id);
+    for i in (1..=time).rev() {
+        info!("Debug {}: Seconds left of free game lock: {} ", id, i);
+        thread::sleep(Duration::from_secs(1));
+    }
+    {
+        let mut manager = match game_manager.try_write() {
+            Ok(manager) => {
+                manager
+            },
+            Err(_err) => {
+                info!("Debug {}: Write lock for game manager could not be acquired, waiting...", id);
+                game_manager.write().unwrap()
+            }
+        };
+        info!("Debug {}: Acquired write lock for game manger", id);
+        for i in (1..=5).rev() {
+            info!("Debug {}: Releasing lock in: {} ", id, i);
+            thread::sleep(Duration::from_secs(1));
+        }
+    }
+    String::from("Success")
 }
 
 /// Some utility functions
