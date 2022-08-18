@@ -21,6 +21,7 @@ The web server will be realized by using the the asynchronous web framework [Roc
 - [ ] Public and private lobbies
 - [ ] Kick players from the game lobby
 - [ ] Join random public lobbies
+- [ ] Extensive documentation using rustdoc
 
 # Maybe sometime
 - [ ] Public game browser
