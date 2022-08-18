@@ -11,7 +11,7 @@ use rocket::{
 
 use crate::{game::{GameCode, GameManager, user_disconnected, UserDisconnectedStatus}, request_data::{UserRegistration, Username, EventData}};
 
-use self::utils::get_game_manager_write_lock;
+use self::utils::{get_gm_read_guard, get_gm_write_guard};
 
 #[get("/lobby")]
 pub async fn lobby() -> Option<NamedFile> {
@@ -27,7 +27,7 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
         Some(code) => code,
         None => return Err(Redirect::to("/lobby")),
     };
-    if get_game_manager_write_lock(game_manager, "lobby_join").does_game_exist(&game_code) {
+    if get_gm_read_guard(game_manager, "lobby_join").does_game_exist(&game_code) {
         Ok(NamedFile::open(Path::new("web/protected/lobby.html"))
             .await
             .ok())
@@ -41,7 +41,7 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/create_game", data = "<username>", rank = 1)]
 pub fn create_game(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>, ip_addr: IpAddr) -> Option<Json<UserRegistration>> {
-    let mut game_manager = get_game_manager_write_lock(game_manager, "create_game");
+    let mut game_manager = get_gm_write_guard(game_manager, "create_game");
     match game_manager.create_game(String::from(username.username), Some(ip_addr)) {
         Some(registration) => Some(Json(registration)),
         None => None,
@@ -53,7 +53,7 @@ pub fn create_game(game_manager: &State<RwLock<GameManager>>, username: Json<Use
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/create_game", data = "<username>", rank = 2)]
 pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
-    let mut game_manager = get_game_manager_write_lock(game_manager, "create_game_without_ip");
+    let mut game_manager = get_gm_write_guard(game_manager, "create_game_without_ip");
     match game_manager.create_game(String::from(username.username), None) {
         Some(registration) => Some(Json(registration)),
         None => None,
@@ -65,7 +65,7 @@ pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, usernam
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/join_game", data = "<username>", rank = 1)]
 pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, ip_addr: IpAddr, game_code: GameCode) -> Option<Json<UserRegistration>> {
-    let mut game_manager = get_game_manager_write_lock(game_manager, "join_game");
+    let mut game_manager = get_gm_write_guard(game_manager, "join_game");
     match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ip_addr)) {
         Some(registration) => Some(Json(registration)),
         None => None,
@@ -77,7 +77,7 @@ pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/join_game", data = "<username>", rank = 2)]
 pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Option<Json<UserRegistration>> {
-    let mut game_manager = get_game_manager_write_lock(game_manager, "join_game_without_ip");
+    let mut game_manager = get_gm_write_guard(game_manager, "join_game_without_ip");
     match game_manager.add_player_to_game(event, game_code, String::from(username.username), None) {
         Some(registration) => Some(Json(registration)),
         None => None,
@@ -90,7 +90,7 @@ pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &S
 /// - `game_code` header with valid [GameCode](../game/struct.GameCode.html)
 #[get("/api/players_in_game")]
 pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: GameCode) -> Json<Vec<String>> {
-    let game_manager = get_game_manager_write_lock(game_manager, "players_in_game");
+    let game_manager = get_gm_read_guard(game_manager, "players_in_game");
     info!("{}", game_code.to_string());
     Json(game_manager.players_in_game(game_code).unwrap())
 }
@@ -108,7 +108,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
     match GameCode::from_string(&game_code) {
         Some(code) => {
             // Mark user as connected
-            get_game_manager_write_lock(game_manager, "Set user connected").user_connected(user_id);
+            get_gm_write_guard(game_manager, "Set user connected").user_connected(user_id);
             Some(EventStream! {
                 loop {
                     //TODO Find out how I can reliably call user_disconnected(game_manager.inner(), user_id); each time a user disconnects from the event stream
@@ -205,7 +205,7 @@ pub fn debug_busy(game_manager: &State<RwLock<GameManager>>, id: i32, time: i32)
 
 /// Some utility functions
 mod utils {
-    use std::sync::{RwLockWriteGuard, RwLock};
+    use std::sync::{RwLockWriteGuard, RwLock, RwLockReadGuard};
 
     use rocket::log::private::info;
 
@@ -225,6 +225,25 @@ mod utils {
         }
     }
 
+    /// Tries to acquire the game_manager read/write lock.
+    /// 
+    /// If successful the game_manager is returned.
+    /// 
+    /// Otherwise the following message is send to console: 
+    /// 
+    /// `{action}: Waiting for game_manager write lock...`
+    /// 
+    /// After that the game_manager is returned when the write lock can be acquired.
+    pub fn get_gm_write_guard<'a>(game_manager: &'a RwLock<GameManager>, action: &'a str) -> RwLockWriteGuard<'a, GameManager> {
+        match game_manager.try_write() {
+            Ok(manager) => manager,
+            Err(_err) => {
+                info!("{}: Waiting for game_manager write lock...", action);
+                game_manager.write().unwrap()
+            }
+        }
+    }
+
     /// Tries to acquire the game_manager write lock.
     /// 
     /// If successful the game_manager is returned.
@@ -234,12 +253,12 @@ mod utils {
     /// `{action}: Waiting for game_manager write lock...`
     /// 
     /// After that the game_manager is returned when the write lock can be acquired.
-    pub fn get_game_manager_write_lock<'a>(game_manager: &'a RwLock<GameManager>, action: &'a str) -> RwLockWriteGuard<'a, GameManager> {
-        match game_manager.try_write() {
+    pub fn get_gm_read_guard<'a>(game_manager: &'a RwLock<GameManager>, action: &'a str) -> RwLockReadGuard<'a, GameManager> {
+        match game_manager.try_read() {
             Ok(manager) => manager,
             Err(_err) => {
-                info!("{}: Waiting for game_manager write lock...", action);
-                game_manager.write().unwrap()
+                info!("{}: Waiting for game_manager read lock...", action);
+                game_manager.read().unwrap()
             }
         }
     }
