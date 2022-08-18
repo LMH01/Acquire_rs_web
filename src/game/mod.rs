@@ -1,7 +1,7 @@
-use std::{net::IpAddr, sync::RwLock, collections::HashMap};
+use std::{net::IpAddr, sync::RwLock, collections::HashMap, time::Duration, thread};
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender};
+use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info};
 
 use crate::{request_data::{UserRegistration, EventData}};
 
@@ -15,6 +15,11 @@ pub mod game_instance;
 
 /// All characters that can be used to generate a game code
 const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
+/// This is the time a game instance is kept alive when no more players are connected
+/// 
+/// When this time runs out the `GameInstance` and `User`s that where assigned to that instance will be deleted from the `GameManager`.
+//const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(60);
+const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Used to manage all currently running games.
 ///
@@ -25,6 +30,8 @@ pub struct GameManager {
     /// All users that are currently playing in a game.
     /// 
     /// Users are added to this vector by either calling [GameManager::create_game()](#method.create_game) or [GameManager::add_player_to_game()](#method.add_player_to_game).
+    /// Stores all users that are currently connected to the server.
+    /// Users will be removed from this list when the event stream breaks.
     users: Vec<User>,
     /// All player ids that are already in use.
     ///
@@ -86,6 +93,51 @@ impl GameManager {
         Some(UserRegistration::new(user_id, code, ip_address_send))
     }
 
+    /// Deletes the game instance for the game code from the server.
+    /// 
+    /// This will also delete all users and players assigned to the game.
+    /// The `GameCode` under wich the game is registered is also freed.
+    /// # Returns
+    /// `true` when the game was deleted
+    /// `false` when the game was not found
+    pub fn delete_game(&mut self, game_code: &GameCode) -> bool {
+        let mut game_found = false;
+        let mut game_to_remove = 0;
+        for (index, game) in self.games.iter().enumerate() {
+            if game.game_code() == game_code {
+                game_found = true;
+                game_to_remove = index;
+            }
+        }
+        if game_found {
+            // Remove game_code from used game codes
+            let mut code_to_remove = 0;
+            for (index, code) in self.used_game_codes.iter().enumerate() {
+                if code == game_code {
+                    code_to_remove = index;
+                }
+            }
+            self.used_game_codes.remove(code_to_remove);
+            // Remove users
+            let mut users_to_remove = Vec::new();
+            for player in self.game_by_code(*game_code).unwrap().players() {
+                for (index, user) in self.users.iter().enumerate() {
+                    if player.id() == user.id() {
+                        users_to_remove.push(index);
+                    }            
+                }
+            }
+            for user_index in users_to_remove {
+                self.users.remove(user_index);
+            }
+            // Remove game instance
+            self.games.remove(game_to_remove);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Tries to add the player to the game.
     /// 
     /// This will fail when the game does not exist or the game was already started.
@@ -143,6 +195,7 @@ impl GameManager {
     /// `Some(&mut Game)` when the game with the game code exists
     /// `None` the game does not exist
     pub fn game_by_code(& self, game_code: GameCode) -> Option<& GameInstance> {
+        //TODO make input require &GameCode
         for game in & self.games {
             if *game.game_code() == game_code {
                 return Some(game);
@@ -211,16 +264,130 @@ impl GameManager {
         }
     }
 
-    /// Generates a unique user id that is not yet registered in the [user_ids]() vector.
+    /// Generates a unique user id that is not yet registered in the `user_ids` vector.
     /// 
-    /// This does not add the generated id to the [user_ids]() vector.
+    /// This does not add the generated id to the `user_ids` vector.
     fn generate_user_id(&mut self) -> i32 {
         let mut number = rand::thread_rng().gen_range(1..=i32::MAX);
         while self.used_user_ids.contains(&number) {
             number = rand::thread_rng().gen_range(1..=i32::MAX);
         }
         number
+    }    
+
+    /// Updates the user entry to reflect that the user is connected.
+    pub fn user_connected(&mut self, user_id: i32) -> bool {
+        for user in &mut self.users {
+            if user.id() == user_id {
+                user.set_connected(true);
+                return true;
+            }
+        }
+        false
     }
+
+    /// Checks if players are still connected to the game
+    /// 
+    /// # Returns
+    /// `Some(true)` when at least one player is still connected to the game
+    /// 
+    /// `Some(false)` when no player is connected to the game
+    /// 
+    /// `None` when the game does not exist
+    pub fn users_connected(&self, game_code: GameCode) -> Option<bool> {
+        match self.game_by_code(game_code) {
+            Some(game) => {
+                let mut connected_player = false;
+                // I know that this is a terrible idea runtime wise, it will probably sometime reworked by putting a reference to user in the player struct.
+                for player in game.players() {
+                    for user in self.users.iter().as_ref() {
+                        if player.id() == user.id() {
+                            if user.connected {
+                                connected_player = true;
+                            }
+                        }
+                    }
+                }
+                Some(connected_player)
+            },
+            None => None
+        }
+    }
+}
+
+
+/// Notifies the `GameManager` that this user has disconnected and performs cleanup actions if necessary.
+/// 
+/// This updates the value `User.connected` for that user to false if the user exists.
+/// 
+/// It is then checked if there are still players connected to the same `GameInstance` where the user disconnected from.
+/// If no players are connected to the server a timer with [GAME_INSTANCE_TIMEOUT](constant.GAME_INSTANCE_TIMEOUT.html) is started.
+/// 
+/// When this timer runs out it is checked again if players are connected to the `GameInstance.
+/// 
+/// When the answer is no the `GameInstance` and all users associated to that game will be deleted from the server and the game_id will be freed.
+/// 
+/// Because this thread will be sleeping for some time an `RwLock<GameManager>` is provided to not block access to the `GameManager` wile waiting.
+/// 
+/// # Returns
+/// `Some(true)` when the user exists and was marked as disconnected
+/// 
+/// `Some(false)` when the user was not found
+/// 
+/// `None` when the user_id is not assigned to a game
+pub fn user_disconnected(game_manager: &RwLock<GameManager>, user_id: i32) -> UserDisconnectedStatus {
+    // Not optimal in terms of runtime when the number of players grows, can be optimized
+    // 1. Check if user exists
+    let game_code: GameCode;
+    {
+        let mut game_manager = game_manager.write().unwrap();
+        let mut user_exists = false;
+        for user in &mut game_manager.users {
+            if user.id() == user_id {
+                // 2. set connection status to false
+                user.set_connected(false);
+                user_exists = true;
+            }
+        }
+        if !user_exists {
+            return UserDisconnectedStatus::UserNotFound;
+        }
+        // 3. Check if user is assigned to game
+        game_code = match game_manager.game_by_user_id(user_id) {
+            Some(game) => game.game_code().clone(),
+            None => return UserDisconnectedStatus::GameNotFound,
+        };
+        // 4. Check if at least one player is still connected to the game
+        if game_manager.users_connected(game_code).unwrap() {
+            return UserDisconnectedStatus::GameAlive;
+        }
+    }
+    // 5. Wait for some time to check if the game keeps being abandoned
+    thread::sleep(GAME_INSTANCE_TIMEOUT);
+    {
+        // 6. Check again if no player is connected
+        let mut game_manager = game_manager.write().unwrap();
+        if game_manager.users_connected(game_code).unwrap() {
+            return UserDisconnectedStatus::GameAlive;
+        }
+        // 7. Delete game
+        game_manager.delete_game(&game_code);
+        info!("Game instance with code {} was deleted because all players left.", game_code.to_string());
+        UserDisconnectedStatus::GameDeleted
+    }
+}
+
+/// The different ways [user_disconnected]() can return.
+#[derive(Debug)]
+pub enum UserDisconnectedStatus {
+    /// Indicates that the game was not found.
+    GameNotFound,
+    /// Indicates that the user with the id was not found.
+    UserNotFound,
+    /// Indicates that at least one player is still connected to the game.
+    GameAlive,
+    /// Indicates that the game was deleted because no players where connected anymore.
+    GameDeleted,
 }
 
 /// Unique 9 character code that identifies a game
@@ -307,6 +474,8 @@ struct User {
     /// 
     /// This user id is used to uniquely identify each user.
     user_id: i32,
+    /// Stores if this user has an open sse stream currently.
+    connected: bool,
 }
 
 impl User {
@@ -320,7 +489,8 @@ impl User {
         Self {
             ip_address,
             username,
-            user_id 
+            user_id,
+            connected: false,
         }
     }
 
@@ -337,6 +507,16 @@ impl User {
     /// Returns the users id
     pub fn id(&self) -> i32 {
         self.user_id
+    }
+
+    /// Returns if the user is currently connected to the server
+    pub fn connected(&self) -> bool {
+        self.connected
+    }
+
+    /// Updates the connection status
+    pub fn set_connected(&mut self, connected: bool) {
+        self.connected = connected
     }
 }
 

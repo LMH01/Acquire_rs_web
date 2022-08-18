@@ -9,7 +9,7 @@ use rocket::{
     tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{GameCode, GameManager}, request_data::{UserRegistration, Username, EventData}};
+use crate::{game::{GameCode, GameManager, user_disconnected}, request_data::{UserRegistration, Username, EventData}};
 
 #[get("/lobby")]
 pub async fn lobby(game_manager: &State<RwLock<GameManager>>) -> Option<NamedFile> {
@@ -101,19 +101,39 @@ pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: Gam
 /// 
 /// Only sse events that match the `game_code` and `user_id` will be transmitted back.
 #[get("/sse/<game_code>/<user_id>")]
-pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: String, user_id: i32) -> Option<EventStream![]> {
+pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<RwLock<GameManager>>, mut end: Shutdown, game_code: String, user_id: i32) -> Option<EventStream![Event + 'a]> {
     let mut rx = event.subscribe();
     match GameCode::from_string(&game_code) {
         Some(code) => {
+            // Mark user as connected
+            game_manager.write().unwrap().user_connected(user_id);
             Some(EventStream! {
                 loop {
+                    //TODO Find out how I can reliably call user_disconnected(game_manager.inner(), user_id); each time a user disconnects from the event stream
+                    /*Workaround that could work: 
+                        Create new route named /ping.
+                        This function here sends a ping request every couple of seconds (maybe 30).
+                        The client will receive that and send a new get request to /ping/<user_id>.
+                        This route handler will then somehow determine if a request was missing 
+                        (maybe this could be realized by using Receiver and Sender from the Crossbeam crate (https://docs.rs/crossbeam/latest/crossbeam/channel/index.html.
+                            This tuple is then put into a request guard that is provided to the routes /sse/<game_code>/<user_id> and /ping/<user_id>.
+                            This tuple is used to notify the ping request handler that a request should be arriving soon.
+                            From there the absence of that could be counted and user_disconnect can then be invoked appropriately)
+                        */
                     let msg = select! {
                         msg = rx.recv() => match msg {
                             Ok(msg) => msg,
-                            Err(RecvError::Closed) => break,
+                            Err(RecvError::Closed) => {
+                                info!("User disconnected {}", user_id);
+                                user_disconnected(game_manager.inner(), user_id);
+                                break
+                            },
                             Err(RecvError::Lagged(_)) => continue,
                         },
-                        _ = &mut end => break,
+                        _ = &mut end => {
+                            info!("End: User disconnected {}", user_id);
+                            break
+                        },
                     };
                     let msg_game_code = msg.game_code();
                     let msg_user_id = msg.user_id();
@@ -127,11 +147,10 @@ pub fn events(event: &State<Sender<EventData>>, mut end: Shutdown, game_code: St
     }
 }
 
-#[get("/api/debug/<game_code>")]
-pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, game_code: &str) -> String {
-    let mut game_manager = game_manager.write().unwrap();
-    let _e = event.send(EventData::new(0, GameCode::from_string(game_code).unwrap(), (String::from("AddPlayer"), String::from("World"))));
-    String::from(game_manager.debug().to_string())
+#[get("/api/debug/<user_id>")]
+pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
+    let status = user_disconnected(game_manager, user_id);
+    String::from(format!("{:?}", status))
 }
 
 /// Some utility functions
