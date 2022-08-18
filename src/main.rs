@@ -7,20 +7,19 @@ use rocket::{
     launch, routes, tokio::sync::broadcast::channel,
 };
 
-use crate::requests::*;
+use crate::paths::*;
 
-/// The underlying game, contains logic and components that are required to run the game
+/// The underlying game, contains logic and components that are required to run the game.
 mod game;
-/// Different data types that are required to process requests
+/// Different data types that are required to process requests.
 mod request_data;
-/// Different data types that are required to authenticate users and requests
+/// Different data types that are required to authenticate users and requests.
 mod authentication;
-/// All requests that the server can handle
+/// All paths for which a request handler is registered.
 ///
-/// All requests that interact with games require a player authentication that is set when the player registers for a game.
-/// This authentication is done by setting a cookie that is checked each time the player interacts with the server endpoints.
-/// When the cookie is invalid or not set the connection is refused.
-mod requests;
+/// All requests that interact with games requires the request guard [UserAuth]() to succeed.
+/// For that the user has to submit the unique `user_id` in an http header and the user must be assigned to a game.
+mod paths;
 
 #[launch]
 /// Start the web server

@@ -19,7 +19,7 @@ const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
 /// 
 /// When this time runs out the `GameInstance` and `User`s that where assigned to that instance will be deleted from the `GameManager`.
 //const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(60);
-const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(5);
+const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Used to manage all currently running games.
 ///
