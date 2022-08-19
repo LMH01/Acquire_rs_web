@@ -1,31 +1,30 @@
-/// Player in the game
+use super::User;
+
+/// Player in the game.
+/// 
+/// Contains all information that is required for a user to play the game.
 pub struct Player {
-    /// The players name
-    name: String,
-    /// The unique id of this player
-    id: i32,
-    /// Signals that this player is the game master and can start the game
+    /// The [User](../struct.User.html) that is associated to this player.
+    pub user: User,
+    /// Signals that this player is the game master and can start the game.
     game_master: bool,
 }
 
 impl Player {
     /// Creates a new player
-    pub fn new(name: String, id: i32) -> Self {
+    pub fn new(user: User) -> Self {
         Self {
-            name,
-            id,
+            user,
             game_master: false,
-        }        
+        }
     }
 
-    /// Returns the players name
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn username(&self) -> String {
+        self.user.name()
     }
 
-    /// Returns the players id
-    pub fn id(&self) -> i32 {
-        self.id
+    pub fn user_id(&self) -> i32 {
+        self.user.id()
     }
 
     /// Updates this player to be the game master

@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use rocket::FromForm;
 use serde::{Serialize, Deserialize};
 
-use crate::game::GameCode;
+use crate::game::game_instance::GameCode;
 
 /// Used to transmit data back to the user when a new game is joined
 #[derive(Serialize, Deserialize)]

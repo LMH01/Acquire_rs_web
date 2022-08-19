@@ -31,9 +31,12 @@ fn rocket() -> _ {
         .manage(channel::<EventData>(1024).0)
 }
 
-// TODO
-//
-// Das private cookie jar als authentication testen
+/* TODO Als nächstes:
+    - Nutzerliste bei verlassen von Spieler überall aktualisieren und Spieler, die gerade als nicht verbunden markiert sind sollen nicht angezeigt werden.
+    - Schauen, dass der Leave game Knopf im Browser richtig funktioniert (Request scheint aktuell nicht gesendet zu werden)
+    - Generell bei der Lobby-Seite weiter machen
+*/
+
 /*
  * Verhalten bei disconnect/ Seite neu laden:
  * 

@@ -9,7 +9,7 @@ use rocket::{
     tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{GameCode, GameManager, disconnect_user, UserDisconnectedStatus}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
+use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
 
 use self::utils::{get_gm_read_guard, get_gm_write_guard};
 
@@ -92,7 +92,7 @@ pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &S
 /// Request guard [UserAuth]() to succeed.
 #[post("/api/leave_game")]
 pub fn leave_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, user_auth: UserAuth) -> String {
-    match disconnect_user(game_manager, user_auth.user_id) {
+    match disconnect_user(game_manager, user_auth) {
         UserDisconnectedStatus::GameAlive => {
             let _e = event.send(EventData::new(0, user_auth.game_code, (String::from("ReloadPlayerList"), None)));
             String::from("User marked as disconnected")
@@ -122,10 +122,10 @@ pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: Gam
 #[get("/sse/<game_code>/<user_id>")]
 pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<RwLock<GameManager>>, mut end: Shutdown, game_code: String, user_id: i32) -> Option<EventStream![Event + 'a]> {
     let mut rx = event.subscribe();
-    match GameCode::from_string(&game_code) {
-        Some(code) => {
+    match UserAuth::from_id(get_gm_read_guard(game_manager, "user_auth for sse event"), user_id) {
+        Some(user_auth) => {
             // Mark user as connected
-            get_gm_write_guard(game_manager, "Set user connected").user_connected(user_id);
+            get_gm_write_guard(game_manager, "Set user connected").game_by_code_mut(user_auth.game_code).unwrap().user_connected(user_id);
             Some(EventStream! {
                 loop {
                     //TODO Find out how I can reliably call user_disconnected(game_manager.inner(), user_id); each time a user disconnects from the event stream
@@ -144,7 +144,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
                             Ok(msg) => msg,
                             Err(RecvError::Closed) => {
                                 info!("User disconnected {}", user_id);
-                                disconnect_user(game_manager.inner(), user_id);
+                                disconnect_user(game_manager.inner(), user_auth);
                                 break
                             },
                             Err(RecvError::Lagged(_)) => continue,
@@ -156,7 +156,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
                     };
                     let msg_game_code = msg.game_code();
                     let msg_user_id = msg.user_id();
-                    if msg_game_code == code.to_string() && ((msg_user_id == user_id) || msg_user_id == 0) {
+                    if msg_game_code == user_auth.game_code.to_string() && ((msg_user_id == user_id) || msg_user_id == 0) {
                         yield Event::json(&msg);
                     }
                 }
@@ -168,7 +168,8 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
 
 #[get("/api/debug/<user_id>")]
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
-    let status = disconnect_user(game_manager, user_id);
+    let auth = UserAuth::from_id(get_gm_read_guard(game_manager, ""), user_id).unwrap();
+    let status = disconnect_user(game_manager, auth);
     String::from(format!("{:?}", status))
 }
 
@@ -221,7 +222,7 @@ pub fn debug_busy(game_manager: &State<RwLock<GameManager>>, id: i32, time: i32)
 }
 
 /// Some utility functions
-mod utils {
+pub mod utils {
     use std::sync::{RwLockWriteGuard, RwLock, RwLockReadGuard};
 
     use rocket::log::private::info;
@@ -236,7 +237,7 @@ mod utils {
         game_manager: &'a mut RwLockWriteGuard<GameManager>,
         player_auth: UserAuth,
     ) -> Option<&'a mut GameInstance> {
-        match game_manager.game_by_user_id(player_auth.user_id) {
+        match game_manager.game_by_user_id_mut(player_auth.user_id) {
             Some(game) => Some(game),
             None => None,
         }

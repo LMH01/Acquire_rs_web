@@ -3,9 +3,9 @@ use std::{net::IpAddr, sync::RwLock, collections::HashMap, time::Duration, threa
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info};
 
-use crate::{request_data::{UserRegistration, EventData}};
+use crate::{request_data::{UserRegistration, EventData}, authentication::UserAuth, paths::utils::get_gm_write_guard};
 
-use self::{game_instance::GameInstance, base_game::Player};
+use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET}, base_game::Player};
 
 /// Contains all base components that are required to run a game
 pub mod base_game;
@@ -13,8 +13,6 @@ pub mod base_game;
 /// Contains the struct that represents a single game
 pub mod game_instance;
 
-/// All characters that can be used to generate a game code
-const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
 /// This is the time a game instance is kept alive when no more players are connected
 /// 
 /// When this time runs out the `GameInstance` and `User`s that where assigned to that instance will be deleted from the `GameManager`.
@@ -27,17 +25,9 @@ const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(20);
 pub struct GameManager {
     /// Contains all games that are currently running
     games: Vec<GameInstance>,
-    /// All users that are currently playing in a game.
+    /// All user ids that are already in use.
     /// 
-    /// Users are added to this vector by either calling [GameManager::create_game()](#method.create_game) or [GameManager::add_player_to_game()](#method.add_player_to_game).
-    /// Stores all users that are currently connected to the server.
-    /// Users will be removed from this list when the event stream breaks.
-    users: Vec<User>,
-    /// All player ids that are already in use.
-    ///
-    /// A player id uniquely identifies the given player.
-    ///
-    /// It is also used to authorize the player against the server.
+    /// See [User.user_id](struct.User.html#structfield.user_id) for more information.
     used_user_ids: Vec<i32>,
     /// Stores all game codes that are already in use
     used_game_codes: Vec<GameCode>,
@@ -48,7 +38,6 @@ impl GameManager {
         Self {
             games: Vec::new(),
             used_user_ids: Vec::new(),
-            users: Vec::new(),
             used_game_codes: Vec::new(),
         }
     }    
@@ -80,9 +69,8 @@ impl GameManager {
         let mut game = GameInstance::new(code);
         let user_id = self.generate_user_id();
         let user = User::new(ip_address, username, user_id);
-        game.add_player(user.name(), user.id());
-        game.set_game_master(user.id());
-        self.users.push(user);
+        game.add_player(user);
+        game.set_game_master(user_id);
         self.used_game_codes.push(code.clone());
         self.used_user_ids.push(user_id);
         self.games.push(game);
@@ -118,18 +106,6 @@ impl GameManager {
                 }
             }
             self.used_game_codes.remove(code_to_remove);
-            // Remove users
-            let mut users_to_remove = Vec::new();
-            for player in self.game_by_code(*game_code).unwrap().players() {
-                for (index, user) in self.users.iter().enumerate() {
-                    if player.id() == user.id() {
-                        users_to_remove.push(index);
-                    }            
-                }
-            }
-            for user_index in users_to_remove {
-                self.users.remove(user_index);
-            }
             // Remove game instance
             self.games.remove(game_to_remove);
             true
@@ -153,9 +129,7 @@ impl GameManager {
         let user_id = self.generate_user_id();
         let player_added = match self.game_by_code_mut(game_code) {
             Some(game) => {
-                let user = User::new(ip_address, username.clone(), user_id);
-                game.add_player(user.name(), user.id());
-                self.users.push(user);
+                game.add_player(User::new(ip_address, username.clone(), user_id));
                 true
             },
             None => false,
@@ -174,15 +148,23 @@ impl GameManager {
         }
     }
 
-    /// # Returns
-    ///
-    /// `Some(&mut Game)` when the game was found where the user is playing in
-    ///
-    /// `None` the user id does not appear to be assigned to a game
-    pub fn game_by_user_id(&mut self, id: i32) -> Option<&mut GameInstance> {
+    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) where the [User](struct.User.html) with `user_id` is assigned to when found.
+    pub fn game_by_user_id(&self, user_id: i32) -> Option<&GameInstance> {
+        for game in self.games.iter() {
+            for player in game.players() {
+                if player.user_id() == user_id {
+                    return Some(game);
+                }
+            }
+        }
+        None
+    }
+    
+    /// Returns mutable reference to [GameInstance](game_instance/struct.GameInstance.html) where the [User](struct.User.html) with `user_id` is assigned to when found.
+    pub fn game_by_user_id_mut(&mut self, id: i32) -> Option<&mut GameInstance> {
         for game in &mut self.games {
             for player in game.players() {
-                if player.id() == id {
+                if player.user_id() == id {
                     return Some(game);
                 }
             }
@@ -232,7 +214,7 @@ impl GameManager {
             Some(game) => {
                 let mut player_names = Vec::new();
                 for player in game.players() {
-                                player_names.push(String::from(player.name()))
+                                player_names.push(String::from(player.username()))
                 }
                 Some(player_names)
             },
@@ -274,115 +256,44 @@ impl GameManager {
         }
         number
     }    
-
-    /// Updates the user entry to reflect that the user is connected.
-    pub fn user_connected(&mut self, user_id: i32) -> bool {
-        for user in &mut self.users {
-            if user.id() == user_id {
-                user.set_connected(true);
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Checks if players are still connected to the game
-    /// 
-    /// # Returns
-    /// `Some(true)` when at least one player is still connected to the game
-    /// 
-    /// `Some(false)` when no player is connected to the game
-    /// 
-    /// `None` when the game does not exist
-    pub fn users_connected(&self, game_code: GameCode) -> Option<bool> {
-        match self.game_by_code(game_code) {
-            Some(game) => {
-                let mut connected_player = false;
-                // I know that this is a terrible idea runtime wise, it will probably sometime reworked by putting a reference to user in the player struct.
-                for player in game.players() {
-                    for user in self.users.iter().as_ref() {
-                        if player.id() == user.id() {
-                            if user.connected {
-                                connected_player = true;
-                            }
-                        }
-                    }
-                }
-                Some(connected_player)
-            },
-            None => None
-        }
-    }
-
-    /// Returns the `users` vector
-    pub fn users(&self) -> &Vec<User> {
-        &self.users
-    }
-
-    /// Returns the `users` vector as mutable
-    pub fn users_mut(&mut self) -> &mut Vec<User> {
-        &mut self.users
-    }
 }
 
 
-/// Disconnects the user from the `GameManager` and performs cleanup actions if necessary.
+/// Disconnects the user from the [GameInstance](game_instance/struct.GameInstance.html) and performs cleanup actions if necessary.
 /// 
-/// This updates the value `User.connected` for that user to false if the user exists.
+/// This updates the value [User.connected](struct.User.html#structfield.connected) for that user to false.
 /// 
-/// It is then checked if there are still players connected to the same `GameInstance` where the user disconnected from.
-/// If no players are connected to the server a timer with [GAME_INSTANCE_TIMEOUT](constant.GAME_INSTANCE_TIMEOUT.html) is started.
+/// It is then checked if the [GameInstance](game_instance/struct.GameInstance.html) is abandoned (no more players are marked as connected).
+/// If the [GameInstance](game_instance/struct.GameInstance.html) is abandoned, a timer with [GAME_INSTANCE_TIMEOUT](constant.GAME_INSTANCE_TIMEOUT.html) duration is started.
 /// 
-/// When this timer runs out it is checked again if players are connected to the `GameInstance.
+/// When this timer runs out it is checked again if the [GameInstance](game_instance/struct.GameInstance.html) is abandoned.
 /// 
-/// When the answer is no the `GameInstance` and all users associated to that game will be deleted from the server and the game_id will be freed.
+/// If the [GameInstance](game_instance/struct.GameInstance.html) is still abandoned it will be deleted from the server and the [GameCode](game_instance/struct.GameCode.html) is made available again.
 /// 
-/// Because this thread will be sleeping for some time an `RwLock<GameManager>` is provided to not block access to the `GameManager` wile waiting.
-/// 
-/// # Returns
-/// `Some(true)` when the user exists and was marked as disconnected
-/// 
-/// `Some(false)` when the user was not found
-/// 
-/// `None` when the user_id is not assigned to a game
-pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_id: i32) -> UserDisconnectedStatus {
+/// Because this thread will be sleeping for some time an `RwLock<GameManager>` is provided to not block access to the [GameManager](struct.GameManager.html) wile sleeping.
+pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth) -> UserDisconnectedStatus {
     // Not optimal in terms of runtime when the number of players grows, can be optimized
-    // 1. Check if user exists
-    let game_code: GameCode;
     {
-        let mut game_manager = game_manager.write().unwrap();
-        let mut user_exists = false;
-        for user in &mut game_manager.users {
-            if user.id() == user_id {
-                // 2. set connection status to false
-                user.set_connected(false);
-                user_exists = true;
-            }
-        }
-        if !user_exists {
-            return UserDisconnectedStatus::UserNotFound;
-        }
-        // 3. Check if user is assigned to game
-        game_code = match game_manager.game_by_user_id(user_id) {
-            Some(game) => game.game_code().clone(),
-            None => return UserDisconnectedStatus::GameNotFound,
-        };
-        // 4. Check if at least one player is still connected to the game
-        if game_manager.users_connected(game_code).unwrap() {
+        let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 1");
+        let game = game_manager.game_by_code_mut(user_auth.game_code).unwrap();
+        // 1. Update connection status to false
+        game.player_by_id_mut(user_auth.user_id).unwrap().user.set_connected(false);
+        // 2. Check if game is abandoned
+        if !game.abandoned() {
             return UserDisconnectedStatus::GameAlive;
         }
     }
-    // 5. Wait for some time to check if the game keeps being abandoned
+    // 3. Wait for some time to check if the game keeps being abandoned
     thread::sleep(GAME_INSTANCE_TIMEOUT);
     {
-        // 6. Check again if no player is connected
-        let mut game_manager = game_manager.write().unwrap();
-        if game_manager.users_connected(game_code).unwrap() {
+        // 4. Check again if game is abandoned
+        let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 2");
+        if !game_manager.game_by_code_mut(user_auth.game_code).unwrap().abandoned() {
             return UserDisconnectedStatus::GameAlive;
         }
-        // 7. Delete game
-        game_manager.delete_game(&game_code);
-        info!("Game instance with code {} was deleted because all players left.", game_code.to_string());
+        // 5. Delete game
+        game_manager.delete_game(&user_auth.game_code);
+        info!("Game instance with code {} was deleted because all players left.", user_auth.game_code.to_string());
         UserDisconnectedStatus::GameDeleted
     }
 }
@@ -390,100 +301,28 @@ pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_id: i32) -> User
 /// The different ways [user_disconnected]() can return.
 #[derive(Debug)]
 pub enum UserDisconnectedStatus {
-    /// Indicates that the game was not found.
-    GameNotFound,
-    /// Indicates that the user with the id was not found.
-    UserNotFound,
     /// Indicates that at least one player is still connected to the game.
     GameAlive,
     /// Indicates that the game was deleted because no players where connected anymore.
     GameDeleted,
 }
 
-/// Unique 9 character code that identifies a game
-///
-/// A code will look like this when `to_string` is called: AB2S-B4D2
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct GameCode {
-    game_code: [char; 8],
-}
-
-impl GameCode {
-    /// Construct a new game code
-    fn new(random_chars: [char; 8]) -> Option<Self> {
-        Some(Self {
-            game_code: random_chars,
-        })
-    }
-
-    /// Construct a new game code from string
-    /// 
-    /// Input should be a in the format like the result of [GameCode::to_string()](#method.to_string).
-    /// 
-    /// # Returns
-    /// `Some(Self)` when the string was valid and the game code was constructed
-    /// `None` when the string could not be constructed into a game code
-    pub fn from_string(string: &str) -> Option<Self> {
-        let mut game_code: [char; 8] = ['a','a','a','a','a','a','a','a'];
-        if string.len() > 9 {
-            return None;
-        }
-        let mut second_half = false;
-        for (index, char) in string.chars().enumerate() {
-            let charset: Vec<char> = GAME_CODE_CHARSET.iter().map(|s| *s as char).collect();
-            if index != 4 {
-                if charset.contains(&char) {
-                    if second_half {
-                        game_code[index-1] = char;
-                    } else {
-                        game_code[index] = char;
-                    }
-                } else {
-                    return None;
-                }
-            } else {
-                if char != '-' {
-                    return None;
-                }
-                second_half = true;
-            }
-        } 
-        Some(Self {
-            game_code
-        })
-    }
-}
-
-impl ToString for GameCode {
-    /// Converts the given value to `String`.
-    ///
-    /// An example output of this function might be: `A23B-9FRT`
-    fn to_string(&self) -> String {
-        let s: String = self.game_code.iter().collect();
-        let parts = s.split_at(4);
-        let mut print = String::from(parts.0);
-        print.push('-');
-        print.push_str(parts.1);
-        print
-    }
-}
-
 /// User that is playing in a game.
 /// 
 /// User is not the same as [Player](base_game/struct.Player.html):
 /// 
-/// - The `Player` contains all data that is required for the user to play the game.
-/// - The `User` is used for authentication against the server.
+/// - The [Player](base_game/struct.Player.html) contains all data that is required for the user to play the game.
+/// - The [User](struct.User.html) is used for authentication against the server.
 #[derive(PartialEq, Eq)]
 pub struct User {
-    /// The ip address of the client, used to reconstruct the user id if connection was lost.
-    ip_address: Option<IpAddr>,
     /// The username of this user.
     username: String,
-    /// The unique user id of this user.
-    /// 
-    /// This user id is used to uniquely identify each user.
+    /// The unique user id of this user, it is used to identify this player.
+    ///
+    /// It is also used to authorize the player against the server using the [UserAuth](../authentication/struct.UserAuth.html) request guard.
     user_id: i32,
+    /// The ip address of the client, used to reconstruct the user id if connection was lost.
+    ip_address: Option<IpAddr>,
     /// Stores if this user has an open sse stream currently.
     connected: bool,
 }

@@ -1,4 +1,4 @@
-use std::{net::IpAddr, sync::RwLock};
+use std::{net::IpAddr, sync::{RwLock, RwLockWriteGuard, RwLockReadGuard}};
 
 use rocket::{
     http::Status,
@@ -8,7 +8,7 @@ use rocket::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    game::{GameCode, GameManager},
+    game::{GameManager, game_instance::GameCode}, paths::utils::get_gm_read_guard,
 };
 
 /// Errors that can occur when the user tries to authenticate a request
@@ -28,6 +28,10 @@ pub enum PlayerAuthError {
 /// 
 /// For a `UserAuth` so succeed the `user_id` has to be transmitted in an http header
 /// and the user has to be assigned to a game.
+/// 
+/// When this struct is provided in a function as parameter it is expected that the request guard was successful.
+/// This means that the user exists and is assigned to a game.
+/// It will not be checked again if the game exists. If this is ignored a panic from a failed `unwrap()` call might be the result.
 #[derive(Clone, Copy)]
 pub struct UserAuth {
     /// The unique id that identifies this user
@@ -36,17 +40,25 @@ pub struct UserAuth {
     pub game_code: GameCode,
 }
 
+impl UserAuth {
+    
+    /// Constructs a new [UserAuth]() by checking if the `user_id` exists and is assigned to a game.
+    pub fn from_id(game_manager: RwLockReadGuard<GameManager>, user_id: i32) -> Option<Self> {
+        match game_manager.game_by_user_id(user_id) {
+            Some(game) => Some(UserAuth {
+                user_id,
+                game_code: game.game_code().clone(),
+            }),
+            None => None,
+        }
+    }
+}
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for UserAuth {
     type Error = PlayerAuthError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
-        let mut game_manager = request
-            .rocket()
-            .state::<RwLock<GameManager>>()
-            .unwrap()
-            .write()
-            .unwrap();
         let user_id = match request.headers().get_one("user_id") {
             Some(header) => header,
             None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Missing)),
@@ -55,14 +67,10 @@ impl<'r> FromRequest<'r> for UserAuth {
             Ok(id) => id,
             Err(_e) => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("user_id is not a number"))))
         };
-        let game = match game_manager.game_by_user_id(user_id) {
-            Some(game) => game,
+        match UserAuth::from_id(get_gm_read_guard(request.rocket().state::<RwLock<GameManager>>().unwrap(), "user_auth: from request"), user_id) {
+            Some(auth) => Outcome::Success(auth),
             None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("game not found")))),
-        };
-        Outcome::Success(UserAuth {
-            user_id,
-            game_code: game.game_code().clone(),
-        })
+        }
     }
 }
 

@@ -1,9 +1,12 @@
-use super::{base_game::Player, GameCode, GameManager};
+use super::{base_game::Player, GameManager, User};
 
 /// Functions related to the games logic
 ///
 /// All these function will be called from within a [GameInstance](../struct.GameInstance.html)
 mod logic;
+
+/// All characters that can be used to generate a game code
+pub const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
 
 /// Representation of a game
 pub struct GameInstance {
@@ -28,13 +31,17 @@ impl GameInstance {
 
     /// Creates a new player and adds them to the game.
     /// 
+    /// # Params
+    /// `user` the [User](../struct.User.html) associated to this player.
+    /// 
     /// # Returns
-    /// `true` when the player was added
-    /// `false` when the player was not added because the game has already started
-    pub fn add_player(&mut self, name: String, id: i32) -> bool {
+    /// `true` when the player was added.
+    /// 
+    /// `false` when the player was not added because the game has already started.
+    pub fn add_player(&mut self, user: User) -> bool {
         match self.game_state {
             GameState::Lobby => {
-                self.players.push(Player::new(name, id));
+                self.players.push(Player::new(user));
                 true
             },
             _ => false,
@@ -59,7 +66,7 @@ impl GameInstance {
             Some(new_gm) => {
                 new_gm.make_game_master();
                 for player in &mut self.players {
-                    if player.is_game_master() && player.id() != id {
+                    if player.is_game_master() && player.user_id() != id {
                         player.revoke_game_master();
                     }
                 }
@@ -82,7 +89,7 @@ impl GameInstance {
     /// Returns the player by id if found
     pub fn player_by_id(&self, id: i32) -> Option<&Player> {
         for player in &self.players {
-            if player.id() == id {
+            if player.user_id() == id {
                 return Some(player);
             }
         }
@@ -91,17 +98,114 @@ impl GameInstance {
 
     /// Returns the player by id mutable if found
     pub fn player_by_id_mut(&mut self, id: i32) -> Option<&mut Player> {
-            for player in &mut self.players {
-                if player.id() == id {
-                    return Some(player);
-                }
+        for player in &mut self.players {
+            if player.user_id() == id {
+                return Some(player);
             }
-            None
         }
+        None
     }
+    
+    /// Updates the user entry to reflect that the user is connected.
+    /// 
+    /// Returns `false` when the user is not assigned to this game.
+    pub fn user_connected(&mut self, user_id: i32) -> bool {
+        for player in &mut self.players {
+            if player.user_id() == user_id {
+                player.user.set_connected(true);
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Checks if players are still connected to this game
+    /// 
+    /// # Returns
+    /// `true` when no player is connected to the game
+    /// 
+    /// `false` when at least one player is still connected to the game
+    pub fn abandoned(&mut self) -> bool {
+        let mut player_connected = false;
+        for player in self.players.iter_mut() {
+            if player.user.connected {
+                player_connected = true;
+            }
+        }
+        !player_connected
+    }
+}
 
 /// The different states a game can be in
 enum GameState {
     /// Signals that this game is still in the lobby and players can join
     Lobby,
+}
+
+/// Unique 9 character code that identifies a game
+///
+/// A code will look like this when `to_string` is called: AB2S-B4D2
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GameCode {
+    game_code: [char; 8],
+}
+
+impl GameCode {
+    /// Construct a new game code
+    pub fn new(random_chars: [char; 8]) -> Option<Self> {
+        Some(Self {
+            game_code: random_chars,
+        })
+    }
+
+    /// Construct a new game code from string
+    /// 
+    /// Input should be a in the format like the result of [GameCode::to_string()](#method.to_string).
+    /// 
+    /// # Returns
+    /// `Some(Self)` when the string was valid and the game code was constructed
+    /// `None` when the string could not be constructed into a game code
+    pub fn from_string(string: &str) -> Option<Self> {
+        let mut game_code: [char; 8] = ['a','a','a','a','a','a','a','a'];
+        if string.len() > 9 {
+            return None;
+        }
+        let mut second_half = false;
+        for (index, char) in string.chars().enumerate() {
+            let charset: Vec<char> = GAME_CODE_CHARSET.iter().map(|s| *s as char).collect();
+            if index != 4 {
+                if charset.contains(&char) {
+                    if second_half {
+                        game_code[index-1] = char;
+                    } else {
+                        game_code[index] = char;
+                    }
+                } else {
+                    return None;
+                }
+            } else {
+                if char != '-' {
+                    return None;
+                }
+                second_half = true;
+            }
+        } 
+        Some(Self {
+            game_code
+        })
+    }
+}
+
+impl ToString for GameCode {
+    /// Converts the given value to `String`.
+    ///
+    /// An example output of this function might be: `A23B-9FRT`
+    fn to_string(&self) -> String {
+        let s: String = self.game_code.iter().collect();
+        let parts = s.split_at(4);
+        let mut print = String::from(parts.0);
+        print.push('-');
+        print.push_str(parts.1);
+        print
+    }
 }
