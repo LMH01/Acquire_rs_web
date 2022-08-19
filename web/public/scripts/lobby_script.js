@@ -46,15 +46,6 @@ function gameCodeFromURL() {
     return window.location.pathname.replace("/lobby/", "");
 }
 
-async function createOrJoinGame() {
-    console.log(document.getElementById("create-or-join-game").innerHTML);
-    if (document.getElementById("create-or-join-game").innerHTML == "Create Game") {
-        createGame();
-    } else {
-        joinGame();
-    }
-}
-
 /**
  * Create a new game
  */
@@ -63,7 +54,7 @@ async function createGame() {
         return;
     }
     let username = document.getElementById("player-name").value;
-    let response = await postData("../api/create_game", {username: username})
+    let response = await postData("../api/create_game", null, {username: username})
     console.info("Saving user_id and user_name to local storage before redirect");
     localStorage.setItem('user_id', response.user_id);
     localStorage.setItem('user_name', username);
@@ -78,13 +69,30 @@ async function joinGame() {
         return;
     }
     let username = document.getElementById("player-name").value;
-    let response = await postData("../api/join_game", {username: username}, new Map([["game_code", gameCodeFromURL()]]));
+    let response = await postData("../api/join_game", null, {username: username}, new Map([["game_code", gameCodeFromURL()]]));
     window.user_name = username;
     window.user_id = response.user_id;
     window.game_code = response.game_code;
     subscribeEvents(window.user_id);
     reloadPlayerList();
     setJoinedGameComponents();
+}
+
+function leaveGame() {
+    if (document.getElementById("leave-game-alert").hidden) {
+        document.getElementById("leave-game-alert").hidden = false;
+        return;
+    }
+    let data = postData("../api/leave_game", window.user_id);
+    console.log(window.game_code);
+    window.location.href = "/lobby/" + window.game_code;
+}
+
+/**
+ * Dismisses the alert that appears when it is tried to leave the game
+ */
+function dismissAlert() {
+    document.getElementById("leave-game-alert").hidden = true;
 }
 
 /**
@@ -123,9 +131,9 @@ function usernameEntered() {
  * Sets the html components of the page to reflect that the player has joined the game
  */
 function setJoinedGameComponents() {
-    document.getElementById("create-or-join-game").innerHTML = "Already Joined";
-    document.getElementById("create-or-join-game").className = "btn btn-secondary";
-    document.getElementById("create-or-join-game").disabled = true;
+    document.getElementById("join-game").disabled = true;
+    document.getElementById("create-game").hidden = true;
+    document.getElementById("leave-game").hidden = false;
     document.getElementById("player-name").value = window.user_name;
     document.getElementById("player-name").disabled = true;
 }
@@ -161,7 +169,10 @@ function subscribeEvents(user_id) {
       switch (msg.data[0]) {
         case "AddPlayer":
             addPlayer(msg.data[1], false);
-          break;
+            break;
+        case "ReloadPlayerList":
+            reloadPlayerList();
+            break;
       }
     });
 
@@ -180,12 +191,12 @@ function subscribeEvents(user_id) {
 }
 
 document.addEventListener("DOMContentLoaded", function(){
-    document.getElementById("create-or-join-game").innerHTML = "Create Game";
     console.info("Initializing page state");
     if (localStorage.getItem('user_id') != undefined) {
         console.info("Detected local storage, rebuilding page state");
         window.user_id = localStorage.getItem('user_id');
         window.user_name = localStorage.getItem('user_name');
+        window.game_code = gameCodeFromURL();
         localStorage.removeItem('user_id');
         localStorage.removeItem('user_name');
         revealInnerContainer();
@@ -194,7 +205,9 @@ document.addEventListener("DOMContentLoaded", function(){
     } else {
         if (window.location.pathname != '/lobby' && window.location.pathname != '/lobby/') {
             console.debug("Initializing page to reflect join game state");
-            document.getElementById("create-or-join-game").innerHTML = "Join Game";
+            document.getElementById("create-game").hidden = true;
+            document.getElementById("join-game").hidden = false;
+            window.game_code = gameCodeFromURL();
             revealInnerContainer();
         }
     }

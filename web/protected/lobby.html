@@ -32,9 +32,19 @@
             </label>
             <input type="text" class="form-control" id="player-name" placeholder="enter username">
             <div class="enter-player-name-button-container">
-                <button type="button" class="btn btn-success" id="create-or-join-game" onclick="createOrJoinGame()">
+                <button type="button" class="btn btn-success" id="create-game" onclick="createGame()">
                     Create Game
                 </button>
+                <button type="button" class="btn btn-success" id="join-game" onclick="joinGame()" hidden>
+                    Join Game
+                </button>
+                <button type="button" class="btn btn-danger" id="leave-game" onclick="leaveGame()" hidden>
+                    Leave Game
+                </button>
+            </div>
+            <div class="alert alert-danger" role="alert" id="leave-game-alert" hidden>
+                    Are you sure, click again?
+                    <button type="button" class="btn-close" id="dismiss-leave-game-alert" onclick="dismissAlert()">X</button>
             </div>
         </div>
         <div class="lobby-inner-container" id="lobby-inner-container" hidden>

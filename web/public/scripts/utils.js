@@ -1,16 +1,27 @@
+/**
+ * Submits a post request to the url
+ */
+async function postData(url = '', user_id, data = {}) {
+  return postData(url, user_id, data = {}, null); // parses JSON response into native JavaScript objects
+}
+
 // Example POST method implementation:
 // Copied from https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch
 /**
  * Submits a post request to the url
  * @param {String} url The url to which the post request should be sent
+ * @param {int} user_id The user_id
  * @param {String} data Data formatted as json string
  * @param {Map} additional_headers Additional headers that should be added to the request
- * @returns 
+ * @returns The response formatted as json
  */
-async function postData(url = '', data = {}, additional_headers) {
+async function postData(url = '', user_id, data = {}, additional_headers) {
   const headers = new Headers;
   headers.append('Content-Type', 'application/json');
-  if (additional_headers != undefined || additional_headers && null) {
+  if (user_id != undefined || user_id != null) {
+    headers.append('user_id', user_id);
+  }
+  if (additional_headers != undefined || additional_headers != null) {
     for (const [key, value] of additional_headers) {
       headers.append(key, value);
     }
