@@ -9,7 +9,7 @@ use rocket::{
     tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{GameCode, GameManager, user_disconnected, UserDisconnectedStatus}, request_data::{UserRegistration, Username, EventData}};
+use crate::{game::{GameCode, GameManager, disconnect_user, UserDisconnectedStatus}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
 
 use self::utils::{get_gm_read_guard, get_gm_write_guard};
 
@@ -84,6 +84,23 @@ pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &S
     }
 }
 
+/// Makes the user leave the game where they are assigned to.
+/// 
+/// An event is then send to all other players in the game to notify them that the player left.
+/// 
+/// # Requires
+/// Request guard [UserAuth]() to succeed.
+#[post("/api/leave_game")]
+pub fn leave_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, user_auth: UserAuth) -> String {
+    match disconnect_user(game_manager, user_auth.user_id) {
+        UserDisconnectedStatus::GameAlive => {
+            let _e = event.send(EventData::new(0, user_auth.game_code, (String::from("ReloadPlayerList"), None)));
+            String::from("User marked as disconnected")
+        },
+        _ => String::from("User marked as disconnected")
+    }
+} 
+
 /// Return the games players as json string.
 /// 
 /// # Requires
@@ -127,7 +144,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
                             Ok(msg) => msg,
                             Err(RecvError::Closed) => {
                                 info!("User disconnected {}", user_id);
-                                user_disconnected(game_manager.inner(), user_id);
+                                disconnect_user(game_manager.inner(), user_id);
                                 break
                             },
                             Err(RecvError::Lagged(_)) => continue,
@@ -151,7 +168,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
 
 #[get("/api/debug/<user_id>")]
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
-    let status = user_disconnected(game_manager, user_id);
+    let status = disconnect_user(game_manager, user_id);
     String::from(format!("{:?}", status))
 }
 

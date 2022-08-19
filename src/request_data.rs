@@ -39,12 +39,12 @@ pub struct EventData {
     /// Stores the value of [GameCode::to_string()](../game/struct.GameCode.html#method.to_string)
     game_code: String,
     /// Additional data
-    data: (String, String),
+    data: (String, Option<String>),
 }
 
 impl EventData {
     /// Construct new event data
-    pub fn new(user_id: i32, game_code: GameCode, data: (String, String)) -> Self {
+    pub fn new(user_id: i32, game_code: GameCode, data: (String, Option<String>)) -> Self {
         Self {
             user_id,
             game_code: game_code.to_string(),

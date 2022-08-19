@@ -25,6 +25,9 @@ pub enum PlayerAuthError {
 /// Symbolizes the authentication of a user.
 ///
 /// A authenticated user is assigned to a game.
+/// 
+/// For a `UserAuth` so succeed the `user_id` has to be transmitted in an http header
+/// and the user has to be assigned to a game.
 #[derive(Clone, Copy)]
 pub struct UserAuth {
     /// The unique id that identifies this user

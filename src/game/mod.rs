@@ -167,7 +167,7 @@ impl GameManager {
                 Some(_e) => true,
                 None => false,
             };
-            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), username)));
+            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
             Some(UserRegistration::new(user_id, game_code, ip_address_send))
         } else {
             None
@@ -232,7 +232,7 @@ impl GameManager {
             Some(game) => {
                 let mut player_names = Vec::new();
                 for player in game.players() {
-                    player_names.push(String::from(player.name()))
+                                player_names.push(String::from(player.name()))
                 }
                 Some(player_names)
             },
@@ -326,7 +326,7 @@ impl GameManager {
 }
 
 
-/// Notifies the `GameManager` that this user has disconnected and performs cleanup actions if necessary.
+/// Disconnects the user from the `GameManager` and performs cleanup actions if necessary.
 /// 
 /// This updates the value `User.connected` for that user to false if the user exists.
 /// 
@@ -345,7 +345,7 @@ impl GameManager {
 /// `Some(false)` when the user was not found
 /// 
 /// `None` when the user_id is not assigned to a game
-pub fn user_disconnected(game_manager: &RwLock<GameManager>, user_id: i32) -> UserDisconnectedStatus {
+pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_id: i32) -> UserDisconnectedStatus {
     // Not optimal in terms of runtime when the number of players grows, can be optimized
     // 1. Check if user exists
     let game_code: GameCode;
