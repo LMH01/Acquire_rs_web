@@ -23,15 +23,22 @@ pub enum PlayerAuthError {
 }
 
 /// Symbolizes the authentication of a user.
-///
+/// 
 /// A authenticated user is assigned to a game.
 /// 
 /// For a `UserAuth` so succeed the `user_id` has to be transmitted in an http header
 /// and the user has to be assigned to a game.
 /// 
-/// When this struct is provided in a function as parameter it is expected that the request guard was successful.
-/// This means that the user exists and is assigned to a game.
-/// It will not be checked again if the game exists. If this is ignored a panic from a failed `unwrap()` call might be the result.
+/// # Request Guard
+/// This struct implements [FromRequest](../../rocket/request/trait.FromRequest.html) and thus is a [Request Guard](../../rocket/request/trait.FromRequest.html#request-guards), 
+/// it can only be constructed by the [from_request](#method.from_request) function.
+/// 
+/// For more information on [Request Guards](../../rocket/request/trait.FromRequest.html#request-guards) take a look [here](../paths/index.html) or [here](../../rocket/request/trait.FromRequest.html#request-guards).
+/// 
+/// # Guarantees
+/// An instance of this [Request Guard](../../rocket/request/trait.FromRequest.html#request-guards) guarantees the following:
+/// 
+/// - The user with id `user_id` exists and is assigned to the game with the code `game_code`.
 #[derive(Clone, Copy)]
 pub struct UserAuth {
     /// The unique id that identifies this user

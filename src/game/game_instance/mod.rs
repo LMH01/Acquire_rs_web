@@ -144,7 +144,21 @@ enum GameState {
 
 /// Unique 9 character code that identifies a game
 ///
-/// A code will look like this when `to_string` is called: AB2S-B4D2
+/// A code will look like this when [to_string](#method.to_string) is called: AB2S-B4D2
+/// 
+/// # Request Guard
+/// This struct implements [FromRequest](../../../rocket/request/trait.FromRequest.html) and thus is a [Request Guard](../../../rocket/request/trait.FromRequest.html#request-guards).
+/// 
+/// For more information on [Request Guards](../../../rocket/request/trait.FromRequest.html#request-guards) take a look [here](../../paths/index.html) or [here](../../../rocket/request/trait.FromRequest.html#request-guards).
+/// 
+/// # Guarantees
+/// An instance of this [Request Guard](../../../rocket/request/trait.FromRequest.html#request-guards) guarantees the following:
+/// 
+/// - The game with `game_code` exists.
+/// 
+/// <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
+/// <strong>Warning:</strong> This is only true when the <a href="">GameCode</a> was constructed by using <a href="#method.from_request">from_request</a>!
+/// </p>
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GameCode {
     game_code: [char; 8],

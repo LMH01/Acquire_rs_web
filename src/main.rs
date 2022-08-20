@@ -17,8 +17,19 @@ mod request_data;
 mod authentication;
 /// All paths for which a request handler is registered.
 ///
-/// All requests that interact with games requires the request guard [UserAuth]() to succeed.
-/// For that the user has to submit the unique `user_id` in an http header and the user must be assigned to a game.
+/// All requests that interact with games requires the request guard [UserAuth](../authentication/struct.UserAuth.html) to succeed.
+/// 
+/// # Request Guards
+/// The following [Request Guards](../../rocket/request/trait.FromRequest.html#request-guards) are used to ensure that incoming requests are valid.
+/// 
+/// - [UserAuth](../authentication/struct.UserAuth.html)
+/// - [GameCode](../game/game_instance/struct.GameCode.html)
+/// 
+/// When a [Request Guard](../../rocket/request/trait.FromRequest.html#request-guards) is provided in a function as parameter it is expected that all fields contained within are valid and can be used without further checks.
+///
+/// For information on what it means for a specific [Request Guard](../../rocket/request/trait.FromRequest.html#request-guards) to pass see the designated doc page.
+/// 
+/// For more information on authentication see [here](../authentication/index.html).
 mod paths;
 
 #[launch]
