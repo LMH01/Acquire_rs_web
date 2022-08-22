@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use super::{base_game::Player, GameManager, User};
 
 /// Functions related to the games logic
@@ -7,6 +9,8 @@ mod logic;
 
 /// All characters that can be used to generate a game code
 pub const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
+/// Determines if a disconnect is required to reconstruct a user
+pub const USER_RECONSTRUCTION_DISCONNECT_REQUIRED: bool = false;
 
 /// Representation of a game
 pub struct GameInstance {
@@ -114,6 +118,30 @@ impl GameInstance {
             }
         }
         false
+    }
+
+    /// Checks if a user with the `name` and `ip_addr` exists and is marked as disconnected.
+    /// 
+    /// If all of the above is true the user id of that user is returned.
+    pub fn reconstruct_user(&self, name: &String, ip_addr: Option<IpAddr>) -> Option<i32> {
+        for player in &self.players {
+            if player.user.name() == *name {
+                match player.user.ip_address() {
+                    Some(addr) => {
+                        if ip_addr.is_some() && addr == &ip_addr.unwrap() {
+                            if USER_RECONSTRUCTION_DISCONNECT_REQUIRED {
+                                if !player.user.connected() {
+                                    return Some(player.user_id());
+                                }
+                            } else {
+                                return Some(player.user_id())};
+                            }
+                        }
+                    None => return None,
+                }
+            }
+        }
+        None
     }
     
     /// Updates the user entry to reflect that the user is connected.
