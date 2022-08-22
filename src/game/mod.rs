@@ -125,7 +125,7 @@ impl GameManager {
     /// # Returns
     /// `Some(i32)` when the user was added to the game, contains the unique user id
     /// `None` when the player was not added to the game, because the game does not exist
-    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
+    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {//TODO Move function to GameInstance
         let user_id = self.generate_user_id();
         let player_added = match self.game_by_code_mut(game_code) {
             Some(game) => {
@@ -209,12 +209,14 @@ impl GameManager {
     /// # Returns
     /// `Some(Vec<String>)` when the game exists. Vector of string contains the currently joined players.
     /// `None` the game does not exist
-    pub fn players_in_game(&self, game_code: GameCode) -> Option<Vec<String>> {
+    pub fn players_in_game(&self, game_code: GameCode) -> Option<Vec<String>> {// TODO Move to GameInstance
         match self.game_by_code(game_code) {
             Some(game) => {
                 let mut player_names = Vec::new();
                 for player in game.players() {
-                                player_names.push(String::from(player.username()))
+                    if player.user.connected() {
+                        player_names.push(String::from(player.username()))
+                    }
                 }
                 Some(player_names)
             },
@@ -271,7 +273,9 @@ impl GameManager {
 /// If the [GameInstance](game_instance/struct.GameInstance.html) is still abandoned it will be deleted from the server and the [GameCode](game_instance/struct.GameCode.html) is made available again.
 /// 
 /// Because this thread will be sleeping for some time an `RwLock<GameManager>` is provided to not block access to the [GameManager](struct.GameManager.html) wile sleeping.
-pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth) -> UserDisconnectedStatus {
+/// 
+/// When `no_sleep` is set and no more players are connected the game will be deleted directly.
+pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth, no_sleep: bool) -> UserDisconnectedStatus {
     // Not optimal in terms of runtime when the number of players grows, can be optimized
     {
         let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 1");
@@ -283,8 +287,10 @@ pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth) 
             return UserDisconnectedStatus::GameAlive;
         }
     }
-    // 3. Wait for some time to check if the game keeps being abandoned
-    thread::sleep(GAME_INSTANCE_TIMEOUT);
+    if !no_sleep {
+        // 3. Wait for some time to check if the game keeps being abandoned
+        thread::sleep(GAME_INSTANCE_TIMEOUT);
+    }
     {
         // 4. Check again if game is abandoned
         let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 2");

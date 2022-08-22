@@ -88,16 +88,17 @@ pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &S
 /// 
 /// An event is then send to all other players in the game to notify them that the player left.
 /// 
+/// When the last player disconnects using this function, the game is deleted instantly, without waiting for a reconnect.
 /// # Requires
 /// Request guard [UserAuth]() to succeed.
 #[post("/api/leave_game")]
-pub fn leave_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, user_auth: UserAuth) -> String {
-    match disconnect_user(game_manager, user_auth) {
+pub fn leave_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, user_auth: UserAuth) -> Json<String> {
+    match disconnect_user(game_manager, user_auth, true) {
         UserDisconnectedStatus::GameAlive => {
             let _e = event.send(EventData::new(0, user_auth.game_code, (String::from("ReloadPlayerList"), None)));
-            String::from("User marked as disconnected")
+            Json::from(String::from("User marked as disconnected"))
         },
-        _ => String::from("User marked as disconnected")
+        _ => Json::from(String::from("User marked as disconnected"))
     }
 } 
 
@@ -144,7 +145,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
                             Ok(msg) => msg,
                             Err(RecvError::Closed) => {
                                 info!("User disconnected {}", user_id);
-                                disconnect_user(game_manager.inner(), user_auth);
+                                disconnect_user(game_manager.inner(), user_auth, false);
                                 break
                             },
                             Err(RecvError::Lagged(_)) => continue,
@@ -169,7 +170,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
 #[get("/api/debug/<user_id>")]
 pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
     let auth = UserAuth::from_id(get_gm_read_guard(game_manager, ""), user_id).unwrap();
-    let status = disconnect_user(game_manager, auth);
+    let status = disconnect_user(game_manager, auth, false);
     String::from(format!("{:?}", status))
 }
 

@@ -23,7 +23,7 @@ pub enum PlayerAuthError {
 }
 
 /// Symbolizes the authentication of a user.
-/// 
+///
 /// A authenticated user is assigned to a game.
 /// 
 /// For a `UserAuth` so succeed the `user_id` has to be transmitted in an http header

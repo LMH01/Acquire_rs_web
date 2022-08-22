@@ -78,12 +78,12 @@ async function joinGame() {
     setJoinedGameComponents();
 }
 
-function leaveGame() {
+async function leaveGame() {
     if (document.getElementById("leave-game-alert").hidden) {
         document.getElementById("leave-game-alert").hidden = false;
         return;
     }
-    let data = postData("../api/leave_game", window.user_id);
+    let data = await postData("../api/leave_game", window.user_id);
     console.log(window.game_code);
     window.location.href = "/lobby/" + window.game_code;
 }
@@ -142,6 +142,7 @@ function setJoinedGameComponents() {
  * Reloads the list of joined players
  */
 async function reloadPlayerList() {
+    console.log("reloading player list");
     var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
     document.getElementById("player-list").innerHTML = "";
     for (const user of response) {
@@ -188,6 +189,7 @@ function subscribeEvents(user_id) {
   }
 
   connect();
+  reloadPlayerList();
 }
 
 document.addEventListener("DOMContentLoaded", function(){
