@@ -70,6 +70,12 @@ async function joinGame() {
     }
     let username = document.getElementById("player-name").value;
     let response = await postData("../api/join_game", null, {username: username}, new Map([["game_code", gameCodeFromURL()]]));
+    console.log(response);
+    if (response == "name_taken") {
+        document.getElementById("username-taken-alert").hidden = false;
+        return;
+    }
+    document.getElementById("username-taken-alert").hidden = true;
     window.user_name = username;
     window.user_id = response.user_id;
     window.game_code = response.game_code;
@@ -91,8 +97,9 @@ async function leaveGame() {
 /**
  * Dismisses the alert that appears when it is tried to leave the game
  */
-function dismissAlert() {
+function dismissAlerts() {
     document.getElementById("leave-game-alert").hidden = true;
+    document.getElementById("username-taken-alert").hidden = true;
 }
 
 /**

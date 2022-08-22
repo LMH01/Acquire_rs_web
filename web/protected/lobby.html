@@ -42,9 +42,15 @@
                     Leave Game
                 </button>
             </div>
-            <div class="alert alert-danger" role="alert" id="leave-game-alert" hidden>
-                    Are you sure, click again?
-                    <button type="button" class="btn-close" id="dismiss-leave-game-alert" onclick="dismissAlert()">X</button>
+            <div class="alerts">
+                <div class="alert alert-danger" role="alert" id="leave-game-alert" hidden>
+                        Are you sure, click again?
+                        <button type="button" class="btn-close" id="dismiss-leave-game-alert" onclick="dismissAlerts()">X</button>
+                </div>
+                <div class="alert alert-danger" role="alert" id="username-taken-alert" hidden>
+                        That username is already taken.
+                        <button type="button" class="btn-close" id="dismiss-username-taken-alert" onclick="dismissAlerts()">X</button>
+                </div>
             </div>
         </div>
         <div class="lobby-inner-container" id="lobby-inner-container" hidden>

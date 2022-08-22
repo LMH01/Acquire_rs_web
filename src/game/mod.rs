@@ -1,11 +1,11 @@
 use std::{net::IpAddr, sync::RwLock, collections::HashMap, time::Duration, thread};
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info};
+use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info, Responder, response, serde::json::Json};
 
 use crate::{request_data::{UserRegistration, EventData}, authentication::UserAuth, paths::utils::get_gm_write_guard};
 
-use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET}, base_game::Player};
+use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET, GameState}, base_game::Player};
 
 /// Contains all base components that are required to run a game
 pub mod base_game;
@@ -116,7 +116,7 @@ impl GameManager {
 
     /// Tries to add the player to the game.
     /// 
-    /// This will fail when the game does not exist or the game was already started.
+    /// This will fail when the game does not exist, the game was already started or when a player with that name was already registered.
     /// 
     /// # Params
     /// `username` the username of the user that should be added to the game
@@ -125,27 +125,31 @@ impl GameManager {
     /// # Returns
     /// `Some(i32)` when the user was added to the game, contains the unique user id
     /// `None` when the player was not added to the game, because the game does not exist
-    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {//TODO Move function to GameInstance
+    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Result<UserRegistration, UserRegistrationError> {//TODO Move function to GameInstance
         let user_id = self.generate_user_id();
-        let player_added = match self.game_by_code_mut(game_code) {
+        match self.game_by_code_mut(game_code) {
             Some(game) => {
-                game.add_player(User::new(ip_address, username.clone(), user_id));
-                true
+                if !game.does_player_exist(&username) {
+                    match game.game_state() {
+                        GameState::Lobby => {
+                            game.add_player(User::new(ip_address, username.clone(), user_id));
+                        }
+                        _ => return Err(UserRegistrationError::GameAlreadyStarted(())),
+                    }
+                } else {
+                    return Err(UserRegistrationError::NameTaken(Json(String::from("name_taken"))));
+                }
             },
+            None => return Err(UserRegistrationError::GameDoesNotExist(())),
+        };
+        self.used_user_ids.push(user_id);
+        let ip_address_send = match ip_address{
+            Some(_e) => true,
             None => false,
         };
-        if player_added {
-            // Only if the player was added will the new user id be pushed to the vector
-            self.used_user_ids.push(user_id);
-            let ip_address_send = match ip_address{
-                Some(_e) => true,
-                None => false,
-            };
-            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
-            Some(UserRegistration::new(user_id, game_code, ip_address_send))
-        } else {
-            None
-        }
+        let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
+        Ok(UserRegistration::new(user_id, game_code, ip_address_send))
+
     }
 
     /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) where the [User](struct.User.html) with `user_id` is assigned to when found.
@@ -302,6 +306,17 @@ pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth, 
         info!("Game instance with code {} was deleted because all players left.", user_auth.game_code.to_string());
         UserDisconnectedStatus::GameDeleted
     }
+}
+
+/// The different ways a user registration can fail.
+#[derive(Responder)]
+pub enum UserRegistrationError {
+    #[response(status = 403, content_type = "json")]
+    NameTaken(Json<String>),
+    #[response(status = 403)]
+    GameDoesNotExist(()),
+    #[response(status = 403)]
+    GameAlreadyStarted(()),
 }
 
 /// The different ways [user_disconnected]() can return.

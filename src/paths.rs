@@ -9,7 +9,7 @@ use rocket::{
     tokio::{sync::broadcast::error::RecvError, select},
 };
 
-use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
+use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode, UserRegistrationError}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
 
 use self::utils::{get_gm_read_guard, get_gm_write_guard};
 
@@ -64,11 +64,11 @@ pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, usernam
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/join_game", data = "<username>", rank = 1)]
-pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, ip_addr: IpAddr, game_code: GameCode) -> Option<Json<UserRegistration>> {
+pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, ip_addr: IpAddr, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
     let mut game_manager = get_gm_write_guard(game_manager, "join_game");
     match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ip_addr)) {
-        Some(registration) => Some(Json(registration)),
-        None => None,
+        Ok(registration) => Ok(Json(registration)),
+        Err(err) => Err(err),
     }
 }
 
@@ -76,11 +76,11 @@ pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/join_game", data = "<username>", rank = 2)]
-pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Option<Json<UserRegistration>> {
+pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
     let mut game_manager = get_gm_write_guard(game_manager, "join_game_without_ip");
     match game_manager.add_player_to_game(event, game_code, String::from(username.username), None) {
-        Some(registration) => Some(Json(registration)),
-        None => None,
+        Ok(registration) => Ok(Json(registration)),
+        Err(err) => Err(err),
     }
 }
 

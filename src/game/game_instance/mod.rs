@@ -105,6 +105,16 @@ impl GameInstance {
         }
         None
     }
+
+    /// Checks if a player with the name already exists
+    pub fn does_player_exist(&self, name: &String) -> bool {
+        for player in &self.players {
+            if player.user.name() == *name {
+                return true;
+            }
+        }
+        false
+    }
     
     /// Updates the user entry to reflect that the user is connected.
     /// 
@@ -134,10 +144,15 @@ impl GameInstance {
         }
         !player_connected
     }
+
+    /// Returns the current game state
+    pub fn game_state(&self) -> &GameState {
+        &self.game_state
+    }
 }
 
 /// The different states a game can be in
-enum GameState {
+pub enum GameState {
     /// Signals that this game is still in the lobby and players can join
     Lobby,
 }
