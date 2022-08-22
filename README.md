@@ -7,8 +7,8 @@ The web server will be realized by using the the asynchronous web framework [Roc
 # Primary Goals
 
 - [ ] Pretty looking game page
-- [ ] Multiple game instances
-- [ ] Lobby system with ability to join lobbies by invite code
+- [X] Multiple game instances
+- [X] Lobby system with ability to join lobbies by invite code
 - [ ] Possibility to reconnect after disconnecting due to internet problems (restoration of game states)
 - [ ] Automatic deletion of game instances when all players have disconnected (for cases where the game was not finished)
 
