@@ -3,11 +3,16 @@ let user_name;
 let game_code;
 
 function generateBoard() {
-
+    for (let i=0; i<=10; i++) {
+        addSingleBoardPiece();
+    }
 }
 
 function addSingleBoardPiece() {
-
+    let div = document.createElement('div');
+    div.id = "square";
+    div.innerHTML = "A";
+    document.getElementById("game-board").append(div);
 }
 
 document.addEventListener("DOMContentLoaded", function(){
@@ -26,4 +31,5 @@ document.addEventListener("DOMContentLoaded", function(){
     //    console.info("Redirecting to lobby screen.")
     //    window.location.href = "/lobby/" + gameCodeFromURL();
     //}
+    generateBoard();
 });
