@@ -132,6 +132,7 @@ function usernameEntered() {
  */
 function setJoinedGameComponents() {
     document.getElementById("join-game").disabled = true;
+    document.getElementById("join-game").hidden = true;
     document.getElementById("create-game").hidden = true;
     document.getElementById("leave-game").hidden = false;
     document.getElementById("player-name").value = window.user_name;
