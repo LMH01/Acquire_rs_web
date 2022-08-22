@@ -94,7 +94,8 @@ async function startGameDebug() {
     localStorage.setItem('user_id', window.user_id);
     localStorage.setItem('user_name', window.user_name);
     localStorage.setItem('game_code', window.game_code);
-    window.location.href = "/lobby/" + window.game_code + "/game";
+    //window.location.href = "/lobby/" + window.game_code + "/game";
+    window.location.href = "/api/debug/game";
 }
 
 /**

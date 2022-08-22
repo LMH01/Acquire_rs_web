@@ -236,6 +236,13 @@ pub fn debug_busy(game_manager: &State<RwLock<GameManager>>, id: i32, time: i32)
     String::from("Success")
 }
 
+#[get("/api/debug/game")]
+pub async fn debug_game() -> Option<NamedFile> {
+    NamedFile::open(Path::new("web/protected/game.html"))
+        .await
+        .ok()
+}
+
 /// Some utility functions
 pub mod utils {
     use std::sync::{RwLockWriteGuard, RwLock, RwLockReadGuard};
