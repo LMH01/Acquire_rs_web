@@ -22,7 +22,6 @@ pub async fn lobby() -> Option<NamedFile> {
 
 #[get("/lobby/<game_code>")]
 pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &str) -> Result<Option<NamedFile>, Redirect> {
-    info!("Game code: {}", game_code);
     let game_code = match GameCode::from_string(game_code) {
         Some(code) => code,
         None => return Err(Redirect::to("/lobby")),
@@ -33,6 +32,21 @@ pub async fn lobby_join(game_manager: &State<RwLock<GameManager>>, game_code: &s
             .ok())
     } else {
         Err(Redirect::to("/lobby"))
+    }
+}
+
+#[get("/lobby/<game_code>/game")]
+pub async fn game_page(game_manager: &State<RwLock<GameManager>>, game_code: &str) -> Result<Option<NamedFile>, Redirect> {
+    let game_code = match GameCode::from_string(game_code) {
+        Some(code) => code,
+        None => return Err(Redirect::to(String::from("/lobby/"))),
+    };
+    if get_gm_read_guard(game_manager, "game_page").does_game_exist(&game_code) {
+        Ok(NamedFile::open(Path::new("web/protected/game.html"))
+            .await
+            .ok())
+    } else {
+        Err(Redirect::to(String::from("/lobby/")))
     }
 }
 

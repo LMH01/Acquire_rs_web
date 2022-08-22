@@ -89,3 +89,10 @@ function getCookie(cname) {
   }
   return null;
 }
+
+/**
+ * Returns the game code extracted from the URL
+ */
+function gameCodeFromURL() {
+    return window.location.pathname.replace("/lobby/", "").replace("/game", "");
+}

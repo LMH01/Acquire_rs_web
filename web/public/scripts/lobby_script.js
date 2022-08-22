@@ -40,13 +40,6 @@ function addPlayer(name, highlighted) {
 }
 
 /**
- * Returns the game code extracted from the URL
- */
-function gameCodeFromURL() {
-    return window.location.pathname.replace("/lobby/", "");
-}
-
-/**
  * Create a new game
  */
 async function createGame() {
@@ -92,6 +85,16 @@ async function leaveGame() {
     let data = await postData("../api/leave_game", window.user_id);
     console.log(window.game_code);
     window.location.href = "/lobby/" + window.game_code;
+}
+
+/**
+ * Some debug functions to test starting the game
+ */
+async function startGameDebug() {
+    localStorage.setItem('user_id', window.user_id);
+    localStorage.setItem('user_name', window.user_name);
+    localStorage.setItem('game_code', window.game_code);
+    window.location.href = "/lobby/" + window.game_code + "/game";
 }
 
 /**
