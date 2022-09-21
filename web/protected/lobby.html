@@ -12,8 +12,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet"> 
     <link rel="stylesheet" href="../style.css">
     <link rel="stylesheet" href="../styles/lobby_style.css">
+    <script type="module" src="../wasm/acquire_rs_wasm.js"></script>
     <script type="text/javascript" src="../scripts/utils.js"></script>
-    <script type="text/javascript" src="../scripts/lobby_script.js"></script>
+    <script type="module" src="../scripts/lobby_script.js"></script>
 </head>
 <body>
     <h1 class="title">
@@ -32,17 +33,17 @@
             </label>
             <input type="text" class="form-control" id="player-name" placeholder="enter username">
             <div class="enter-player-name-button-container">
-                <button type="button" class="btn btn-success" id="create-game" onclick="createGame()">
+                <button type="button" class="btn btn-success" id="create-game">
                     Create Game
                 </button>
-                <button type="button" class="btn btn-success" id="join-game" onclick="joinGame()" hidden>
+                <button type="button" class="btn btn-success" id="join-game" hidden>
                     Join Game
                 </button>
-                <button type="button" class="btn btn-danger" id="leave-game" onclick="leaveGame()" hidden>
+                <button type="button" class="btn btn-danger" id="leave-game" hidden>
                     Leave Game
                 </button>
             </div>
-            <button type="button" class="btn btn-secondary" id="debug" onclick="startGameDebug()">
+            <button type="button" class="btn btn-secondary" id="debug">
                 Start Game Debug
             </button>
             <div class="alerts">

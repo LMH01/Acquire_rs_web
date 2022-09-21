@@ -1,10 +1,12 @@
+import init from "/../wasm/acquire_rs_wasm.js"
+let wasm = null;
 let user_id;
 let user_name;
 let game_code;
 
 function lobby() {
     console.log("Adding new player to list")
-    addPlayer(document.getElementById("player-name").value);
+    addPlayerHighlighted(document.getElementById("player-name").value);
 }
 
 async function demo() {
@@ -20,7 +22,7 @@ async function demo() {
  * @param {String} name the name of the player that should be added
  */
 function addPlayer(name) {
-    addPlayer(name, false);
+    addPlayerHighlighted(name, false);
 }
 
 /**
@@ -28,7 +30,7 @@ function addPlayer(name) {
  * @param {string} name the name of the player that should be added
  * @param {boolean} highlighted if true the player will be added highlighted
  */
-function addPlayer(name, highlighted) {
+function addPlayerHighlighted(name, highlighted) {
     let div = document.createElement('li');
     if (highlighted) {
         div.className = "list-group-item list-group-item-primary";
@@ -117,9 +119,9 @@ async function revealInnerContainer() {
     var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
     for (const user of response) {
         if (user == window.user_name) {
-            addPlayer(user, true);
+            addPlayerHighlighted(user, true);
         } else {
-            addPlayer(user, false);
+            addPlayerHighlighted(user, false);
         }
     }
     document.getElementById("player-list").hidden = false;
@@ -159,9 +161,9 @@ async function reloadPlayerList() {
     document.getElementById("player-list").innerHTML = "";
     for (const user of response) {
         if (user == window.user_name) {
-            addPlayer(user, true);
+            addPlayerHighlighted(user, true);
         } else {
-            addPlayer(user, false);
+            addPlayerHighlighted(user, false);
         }
     }
 }
@@ -204,8 +206,21 @@ function subscribeEvents(user_id) {
   reloadPlayerList();
 }
 
-document.addEventListener("DOMContentLoaded", function(){
+/**
+ * This will initialize the page and add the action to the buttons
+ */
+function initPage() {
+    document.getElementById("create-game").addEventListener('click', createGame);
+    document.getElementById("join-game").addEventListener('click', joinGame);
+    document.getElementById("leave-game").addEventListener('click', leaveGame);
+    document.getElementById("debug").addEventListener('click', startGameDebug);
+}
+
+document.addEventListener("DOMContentLoaded", async function(){
     console.info("Initializing page state");
+    wasm = await init();
+    wasm.init();
+    initPage();
     if (localStorage.getItem('user_id') != undefined) {
         console.info("Detected local storage, rebuilding page state");
         window.user_id = localStorage.getItem('user_id');
