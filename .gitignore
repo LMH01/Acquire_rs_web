@@ -1,3 +1,5 @@
 /target
+/wasm/target
+/web/public/wasm
 .vscode
 Rocket.toml
