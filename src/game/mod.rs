@@ -139,6 +139,8 @@ impl GameManager {
                 } else if ip_address.is_some(){
                     match game.reconstruct_user(&username, ip_address) {
                         Some(user_id) => {
+                            // Add player to player list again
+                            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
                             return Ok(UserRegistration::new(user_id, *game.game_code(), true));
                         },
                         None => return Err(UserRegistrationError::NameTaken(Json(String::from("name_taken")))),
