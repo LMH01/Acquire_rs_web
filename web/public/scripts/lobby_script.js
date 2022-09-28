@@ -200,8 +200,9 @@ function initPage() {
 }
 
 document.addEventListener("DOMContentLoaded", async function(){
-    await wasm_bindgen('../wasm/acquire_rs_wasm_bg.wasm');
     console.info("Initializing page state");
+    await wasm_bindgen('../wasm/acquire_rs_wasm_bg.wasm');
+    wasm_bindgen.init_lobby();
     initPage();
     if (localStorage.getItem('user_id') != undefined) {
         console.info("Detected local storage, rebuilding page state");
