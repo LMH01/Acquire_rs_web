@@ -3,7 +3,7 @@
 #wasm-pack is required for the build process
 cd ./wasm
 (
-    exec wasm-pack build --target web
+    exec wasm-pack build --target no-modules
     if [ &? -ne 0]
     then
         exit

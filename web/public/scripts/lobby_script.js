@@ -1,5 +1,3 @@
-import init from "/../wasm/acquire_rs_wasm.js"
-let wasm = null;
 let user_id;
 let user_name;
 let game_code;
@@ -15,14 +13,6 @@ async function demo() {
     document.getElementById("game-code").hidden = false;
     document.getElementById("game-code-placeholder").hidden = true;
     document.getElementById("lobby-inner-container").hidden = false;
-}
-
-/**
- * Adds the player to the player list
- * @param {String} name the name of the player that should be added
- */
-function addPlayer(name) {
-    addPlayerHighlighted(name, false);
 }
 
 /**
@@ -93,11 +83,12 @@ async function leaveGame() {
  * Some debug functions to test starting the game
  */
 async function startGameDebug() {
-    localStorage.setItem('user_id', window.user_id);
-    localStorage.setItem('user_name', window.user_name);
-    localStorage.setItem('game_code', window.game_code);
-    //window.location.href = "/lobby/" + window.game_code + "/game";
-    window.location.href = "/api/debug/game";
+    wasm_bindgen.add_player("Rust", false);
+   // localStorage.setItem('user_id', window.user_id);
+   // localStorage.setItem('user_name', window.user_name);
+   // localStorage.setItem('game_code', window.game_code);
+   // //window.location.href = "/lobby/" + window.game_code + "/game";
+   // window.location.href = "/api/debug/game";
 }
 
 /**
@@ -118,11 +109,7 @@ async function revealInnerContainer() {
     document.getElementById("game-code-placeholder").hidden = true;
     var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
     for (const user of response) {
-        if (user == window.user_name) {
-            addPlayerHighlighted(user, true);
-        } else {
-            addPlayerHighlighted(user, false);
-        }
+        wasm_bindgen.add_player(user, user == window.user_name);
     }
     document.getElementById("player-list").hidden = false;
     document.getElementById("player-list-placeholder").hidden = true;
@@ -160,11 +147,7 @@ async function reloadPlayerList() {
     var response = await fetchData('../api/players_in_game', new Map([["game_code", gameCodeFromURL()]]));
     document.getElementById("player-list").innerHTML = "";
     for (const user of response) {
-        if (user == window.user_name) {
-            addPlayerHighlighted(user, true);
-        } else {
-            addPlayerHighlighted(user, false);
-        }
+        wasm_bindgen.add_player(user, user == window.user_name);
     }
 }
 
@@ -183,7 +166,7 @@ function subscribeEvents(user_id) {
       console.log(msg);
       switch (msg.data[0]) {
         case "AddPlayer":
-            addPlayer(msg.data[1], false);
+            wasm_bindgen.add_player(msg.data[1], false);
             break;
         case "ReloadPlayerList":
             reloadPlayerList();
@@ -217,9 +200,8 @@ function initPage() {
 }
 
 document.addEventListener("DOMContentLoaded", async function(){
+    await wasm_bindgen('../wasm/acquire_rs_wasm_bg.wasm');
     console.info("Initializing page state");
-    wasm = await init();
-    wasm.init();
     initPage();
     if (localStorage.getItem('user_id') != undefined) {
         console.info("Detected local storage, rebuilding page state");
