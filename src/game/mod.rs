@@ -93,7 +93,7 @@ impl GameManager {
     /// `true` when the game was deleted
     /// `false` when the game was not found
     pub fn delete_game(&mut self, game_code: &GameCode) -> bool {
-        if self.games.contains_key(game_code) {
+        if !self.games.contains_key(game_code) {
             return false;
         }
         
