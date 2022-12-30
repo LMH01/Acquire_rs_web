@@ -140,7 +140,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
     match UserAuth::from_id(get_gm_read_guard(game_manager, "user_auth for sse event"), user_id) {
         Some(user_auth) => {
             // Mark user as connected
-            get_gm_write_guard(game_manager, "Set user connected").game_by_code_mut(user_auth.game_code).unwrap().user_connected(user_id);
+            get_gm_write_guard(game_manager, "Set user connected").game_by_code_write(user_auth.game_code).unwrap().user_connected(user_id);
             Some(EventStream! {
                 loop {
                     //TODO Find out how I can reliably call user_disconnected(game_manager.inner(), user_id); each time a user disconnects from the event stream
@@ -253,17 +253,6 @@ pub mod utils {
         game::{game_instance::GameInstance, GameManager},
         authentication::UserAuth,
     };
-
-    /// Returns the game a player is assigned to by using the `player_auth`
-    pub fn game_by_player_auth<'a>(
-        game_manager: &'a mut RwLockWriteGuard<GameManager>,
-        player_auth: UserAuth,
-    ) -> Option<&'a mut GameInstance> {
-        match game_manager.game_by_user_id_mut(player_auth.user_id) {
-            Some(game) => Some(game),
-            None => None,
-        }
-    }
 
     /// Tries to acquire the game_manager read/write lock.
     /// 

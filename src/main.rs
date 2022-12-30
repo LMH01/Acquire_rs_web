@@ -66,16 +66,10 @@ fn rocket() -> _ {
  *      4. Ist die Antwort auf all diese Fragen ja, dann bekommt der neue Nutzer die User id von dem alten Nutzer und wird auf die Spielseite weitergeleitet
  */
 
- /*TODO
-    WICHTIG!
-    Problem mit dem RwLock auf dem GameManager:
-    Vielleicht sollte ich die GameInstances lieber aus dem GameManager raus nehmen und in eine eigene Datenstruktur packen, sodass mehrere Spielinstanzen
-    gleichzeitig bearbeitet werden können. Da der RwLock aktuell auf dem GameManager liegt, ist es nicht möglich auf mehrere Spielinstanzen gleichzeitig
-    zuzugreifen.
-    Um das zu beheben könnte man folgende HashMap zusätzlich von Rocket managen lassen: HashMap<GameCode, RwLock<GameInstance>>
-    Diese Hashmap würde dann die Spiel instanzen per game code speicher -> ist für einen game code keine eintag in der Hashmap, gibt es auch keine Spielinstanz.
-    Das würde alles noch einmal leichter und besser machen.
-    So können die einzelnen Spielinstanzen dann unabhängig von einander verändert werden.
-    
-    let map: HashMap<GameCode, RwLock<GameInstance>> = HashMap::new();
+ /*
+    More todos
+
+    - i32 als userid durch uuid aus Uuid crate ersetzen.
+    - replace regaining of user session through ip address with placed cookie, that is used to regain the session when connection is lost.
+    - Make all links in the documentation work.
  */

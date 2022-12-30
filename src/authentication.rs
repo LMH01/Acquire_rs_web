@@ -51,7 +51,7 @@ impl UserAuth {
     
     /// Constructs a new [UserAuth]() by checking if the `user_id` exists and is assigned to a game.
     pub fn from_id(game_manager: RwLockReadGuard<GameManager>, user_id: i32) -> Option<Self> {
-        match game_manager.game_by_user_id(user_id) {
+        match game_manager.game_by_uuid_read(user_id) {
             Some(game) => Some(UserAuth {
                 user_id,
                 game_code: game.game_code().clone(),

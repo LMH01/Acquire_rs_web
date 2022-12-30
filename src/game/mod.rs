@@ -1,4 +1,4 @@
-use std::{net::IpAddr, sync::RwLock, collections::HashMap, time::Duration, thread};
+use std::{net::IpAddr, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, collections::{HashMap, HashSet}, time::Duration, thread};
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info, Responder, response, serde::json::Json};
@@ -23,22 +23,29 @@ const GAME_INSTANCE_TIMEOUT: Duration = Duration::from_secs(20);
 ///
 /// One `GameManager` instance is managed by rocket and given to each request handler.
 pub struct GameManager {
-    /// Contains all games that are currently running
-    games: Vec<GameInstance>,
+    /// Contains all games that are currently running.
+    /// 
+    /// - `key` is the game code for the specified game
+    /// - `value` is the game instance, wrapped in an [RwLock]() so that multiple game instances can be accessed with write right simultaneously
+    games: HashMap<GameCode, RwLock<GameInstance>>,
     /// All user ids that are already in use.
     /// 
     /// See [User.user_id](struct.User.html#structfield.user_id) for more information.
+    #[deprecated(note="Replaced by used_uuids")]
     used_user_ids: Vec<i32>,
+    /// All uuids that are already in use, mapped to the [GameCode]() in which the player with the specified uuid is playing in.
+    used_uuids: HashMap<i32, GameCode>,
     /// Stores all game codes that are already in use
-    used_game_codes: Vec<GameCode>,
+    used_game_codes: HashSet<GameCode>,
 }
 
 impl GameManager {
     pub fn new() -> Self {
         Self {
-            games: Vec::new(),
+            games: HashMap::new(),
             used_user_ids: Vec::new(),
-            used_game_codes: Vec::new(),
+            used_uuids: HashMap::new(),
+            used_game_codes: HashSet::new(),
         }
     }    
 
@@ -62,18 +69,18 @@ impl GameManager {
     /// `ip_address` the ip address of the user that creates the game. See [User]() for reason why `ip_address` is required.
     /// 
     /// # Returns
-    /// `Some(GameCode)` when the game was created
+    /// `Some(UserRegistration)` when the game was created
     /// `None` when the game was not created
     pub fn create_game(&mut self, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
         let code = self.generate_game_code();
         let mut game = GameInstance::new(code);
         let user_id = self.generate_user_id();
         let user = User::new(ip_address, username, user_id);
-        game.add_player(user);
+        game.add_user(user);
         game.set_game_master(user_id);
-        self.used_game_codes.push(code.clone());
+        self.used_game_codes.insert(code);
         self.used_user_ids.push(user_id);
-        self.games.push(game);
+        self.games.insert(code, RwLock::new(game));
         let ip_address_send = match ip_address{
             Some(_e) => true,
             None => false,
@@ -91,27 +98,15 @@ impl GameManager {
     pub fn delete_game(&mut self, game_code: &GameCode) -> bool {
         let mut game_found = false;
         let mut game_to_remove = 0;
-        for (index, game) in self.games.iter().enumerate() {
-            if game.game_code() == game_code {
-                game_found = true;
-                game_to_remove = index;
-            }
+        if self.games.contains_key(game_code) {
+            return false;
         }
-        if game_found {
-            // Remove game_code from used game codes
-            let mut code_to_remove = 0;
-            for (index, code) in self.used_game_codes.iter().enumerate() {
-                if code == game_code {
-                    code_to_remove = index;
-                }
-            }
-            self.used_game_codes.remove(code_to_remove);
-            // Remove game instance
-            self.games.remove(game_to_remove);
-            true
-        } else {
-            false
-        }
+         
+        // Remove game_code from used game codes
+        self.used_game_codes.remove(game_code);
+        // Remove game instance
+        self.games.remove(game_code);
+        true
     }
 
     /// Tries to add the player to the game.
@@ -119,36 +114,40 @@ impl GameManager {
     /// This will fail when the game does not exist, the game was already started or when a player with that name was already registered.
     /// 
     /// # Params
-    /// `username` the username of the user that should be added to the game
-    /// `ip_address` the ip address of the user that should be added to the game. See [User]() for reason why `ip_address` is required.
+    /// - `username` the username of the user that should be added to the game
+    /// - `ip_address` the ip address of the user that should be added to the game. See [User]() for reason why `ip_address` is required.
     /// 
     /// # Returns
-    /// `Some(i32)` when the user was added to the game, contains the unique user id
-    /// `None` when the player was not added to the game, because the game does not exist
+    /// - `Ok(UserRegistration)` when the user was added to the game.
+    /// - `Err(UserRegistrationError)` when the player was not added to the game, contains the reason why the player was not added.
     pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Result<UserRegistration, UserRegistrationError> {//TODO Move function to GameInstance
         let user_id = self.generate_user_id();
-        match self.game_by_code_mut(game_code) {
+        if self.games.contains_key(&game_code) {
+            let game = self.games.get(&game_code);
+        }
+        match self.games.get(&game_code) {
             Some(game) => {
-                if !game.does_player_exist(&username) {
-                    match game.game_state() {
+                let mut game_write = game.write().unwrap();
+                if !game_write.does_player_exist(&username) {
+                    match game_write.game_state() {
                         GameState::Lobby => {
-                            game.add_player(User::new(ip_address, username.clone(), user_id));
+                            game_write.add_user(User::new(ip_address, username.clone(), user_id));
                         }
                         _ => return Err(UserRegistrationError::GameAlreadyStarted(())),
                     }
-                } else if ip_address.is_some(){
-                    match game.reconstruct_user(&username, ip_address) {
+                } else if ip_address.is_some() {
+                    match game_write.reconstruct_user(&username, ip_address) {
                         Some(user_id) => {
                             // Add player to player list again
                             let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
-                            return Ok(UserRegistration::new(user_id, *game.game_code(), true));
-                        },
+                            return Ok(UserRegistration::new(user_id, *game_write.game_code(), true));
+                        }
                         None => return Err(UserRegistrationError::NameTaken(Json(String::from("name_taken")))),
                     }
                 }
             },
             None => return Err(UserRegistrationError::GameDoesNotExist(())),
-        };
+        }
         self.used_user_ids.push(user_id);
         let ip_address_send = match ip_address{
             Some(_e) => true,
@@ -156,58 +155,83 @@ impl GameManager {
         };
         let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
         Ok(UserRegistration::new(user_id, game_code, ip_address_send))
-
     }
 
-    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) where the [User](struct.User.html) with `user_id` is assigned to when found.
-    pub fn game_by_user_id(&self, user_id: i32) -> Option<&GameInstance> {
-        for game in self.games.iter() {
-            for player in game.players() {
-                if player.user_id() == user_id {
-                    return Some(game);
-                }
-            }
+    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) wrapped inside an [RwLock]() where the [User](struct.User.html) with `user_id` is assigned to when found.
+    /// 
+    /// # Returns
+    /// - `Some(&RwLock<GameInstance>)` when a game for the specified user exists.
+    /// - `None` the game does not exist.
+    pub fn game_by_user_id(&self, user_id: i32) -> Option<&RwLock<GameInstance>> {
+        if self.used_uuids.contains_key(&user_id) {
+            let code = self.used_uuids.get(&user_id).unwrap();
+            self.games.get(code)
+        } else {
+            None
         }
-        None
     }
     
-    /// Returns mutable reference to [GameInstance](game_instance/struct.GameInstance.html) where the [User](struct.User.html) with `user_id` is assigned to when found.
-    pub fn game_by_user_id_mut(&mut self, id: i32) -> Option<&mut GameInstance> {
-        for game in &mut self.games {
-            for player in game.players() {
-                if player.user_id() == id {
-                    return Some(game);
-                }
-            }
+    /// Returns [RwLockReadGuard]() for the [GameInstance]() where the `uuid` is assigned to.
+    pub fn game_by_uuid_read(&self, uuid: i32) -> Option<RwLockReadGuard<GameInstance>> {
+        match self.game_by_user_id(uuid) {
+            Some(game) => Some(game.read().unwrap()),
+            None => None,
         }
-        None
     }
 
-    /// # Returns
-    /// 
-    /// `Some(&mut Game)` when the game with the game code exists
-    /// `None` the game does not exist
-    pub fn game_by_code(& self, game_code: GameCode) -> Option<& GameInstance> {
-        //TODO make input require &GameCode
-        for game in & self.games {
-            if *game.game_code() == game_code {
-                return Some(game);
-            }
+    /// Returns [RwLockWriteGuard]() for the [GameInstance]() where the `uuid` is assigned to.    
+    pub fn game_by_uuid_write(&self, uuid: i32) -> Option<RwLockWriteGuard<GameInstance>> {
+        match self.game_by_user_id(uuid) {
+            Some(game) => Some(game.write().unwrap()),
+            None => None,
         }
-        None
     }
 
-    /// # Returns
+    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) wrapped inside an [RwLock]() when a [GameInstance]() for this code exists.
     /// 
-    /// `Some(&mut Game)` when the game with the game code exists
-    /// `None` the game does not exist
-    pub fn game_by_code_mut(&mut self, game_code: GameCode) -> Option<&mut GameInstance> {
-        for game in &mut self.games {
-            if *game.game_code() == game_code {
-                return Some(game);
-            }
+    /// # Returns
+    /// - `Some(&RwLock<GameInstance>)` when the game with the game code exists.
+    /// - `None` the game does not exist.
+    pub fn game_by_code(&self, game_code: GameCode) -> Option<&RwLock<GameInstance>> {
+        self.games.get(&game_code)
+    }
+
+    /// Returns [RwLockReadGuard]() for the [GameInstance]() with the specified `game_code`.
+    pub fn game_by_code_read(&self, game_code: GameCode) -> Option<RwLockReadGuard<GameInstance>> {
+        match self.game_by_code(game_code) {
+            Some(game) => Some(game.read().unwrap()),
+            None => None,
         }
-        None
+    }
+
+    /// Returns [RwLockWriteGuard]() for the [GameInstance]() with the specified `game_code`.    
+    pub fn game_by_code_write(&self, game_code: GameCode) -> Option<RwLockWriteGuard<GameInstance>> {
+        match self.game_by_code(game_code) {
+            Some(game) => Some(game.write().unwrap()),
+            None => None,
+        }
+    }
+
+    /// Returns the game a user is assigned to by using the `user_auth`, wrapped in an [RwLock]().
+    pub fn game_by_user_auth(&self, user_auth: UserAuth,) -> Option<&RwLock<GameInstance>> {
+        self.game_by_code(user_auth.game_code)
+    }
+
+    
+    /// Returns [RwLockReadGuard]() for the [GameInstance]() where the `user_auth` is assigned to.
+    pub fn game_by_user_auth_read(&self, user_auth: UserAuth) -> Option<RwLockReadGuard<GameInstance>> {
+        match self.game_by_user_auth(user_auth) {
+            Some(game) => Some(game.read().unwrap()),
+            None => None,
+        }
+    }
+
+    /// Returns [RwLockWriteGuard]() for the [GameInstance]() where the `user_auth` is assigned to.    
+    pub fn game_by_user_auth_write(&self, user_auth: UserAuth) -> Option<RwLockWriteGuard<GameInstance>> {
+        match self.game_by_user_auth(user_auth) {
+            Some(game) => Some(game.write().unwrap()),
+            None => None,
+        }
     }
 
     /// Checks if a game with the game code exists
@@ -221,7 +245,7 @@ impl GameManager {
     /// `Some(Vec<String>)` when the game exists. Vector of string contains the currently joined players.
     /// `None` the game does not exist
     pub fn players_in_game(&self, game_code: GameCode) -> Option<Vec<String>> {// TODO Move to GameInstance
-        match self.game_by_code(game_code) {
+        match self.game_by_code_read(game_code) {
             Some(game) => {
                 let mut player_names = Vec::new();
                 for player in game.players() {
@@ -289,8 +313,8 @@ impl GameManager {
 pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth, no_sleep: bool) -> UserDisconnectedStatus {
     // Not optimal in terms of runtime when the number of players grows, can be optimized
     {
-        let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 1");
-        let game = game_manager.game_by_code_mut(user_auth.game_code).unwrap();
+        let game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 1");
+        let mut game = game_manager.game_by_code_write(user_auth.game_code).unwrap();
         // 1. Update connection status to false
         game.player_by_id_mut(user_auth.user_id).unwrap().user.set_connected(false);
         // 2. Check if game is abandoned
@@ -305,7 +329,7 @@ pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth, 
     {
         // 4. Check again if game is abandoned
         let mut game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 2");
-        if !game_manager.game_by_code_mut(user_auth.game_code).unwrap().abandoned() {
+        if !game_manager.game_by_code_write(user_auth.game_code).unwrap().abandoned() {
             return UserDisconnectedStatus::GameAlive;
         }
         // 5. Delete game

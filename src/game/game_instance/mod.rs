@@ -33,7 +33,7 @@ impl GameInstance {
         }
     }
 
-    /// Creates a new player and adds them to the game.
+    /// Creates a new player that is associated to the user and adds them to the game.
     /// 
     /// # Params
     /// `user` the [User](../struct.User.html) associated to this player.
@@ -42,7 +42,7 @@ impl GameInstance {
     /// `true` when the player was added.
     /// 
     /// `false` when the player was not added because the game has already started.
-    pub fn add_player(&mut self, user: User) -> bool {
+    pub fn add_user(&mut self, user: User) -> bool {
         match self.game_state {
             GameState::Lobby => {
                 self.players.push(Player::new(user));
@@ -63,8 +63,8 @@ impl GameInstance {
     /// `id` the id of the player that should become the game master.
     /// 
     /// # Returns
-    /// `true` game master was updated
-    /// `false` game master was not updated because the player was not found
+    /// - `true` game master was updated
+    /// - `false` game master was not updated because the player was not found
     pub fn set_game_master(&mut self, id: i32) -> bool {
         match self.player_by_id_mut(id) {
             Some(new_gm) => {
@@ -202,7 +202,7 @@ pub enum GameState {
 /// <p style="background:rgba(255,181,77,0.16);padding:0.75em;">
 /// <strong>Warning:</strong> This is only true when the <a href="">GameCode</a> was constructed by using <a href="#method.from_request">from_request</a>!
 /// </p>
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GameCode {
     game_code: [char; 8],
 }
