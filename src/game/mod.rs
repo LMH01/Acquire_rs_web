@@ -30,9 +30,6 @@ pub struct GameManager {
     games: HashMap<GameCode, RwLock<GameInstance>>,
     /// All user ids that are already in use.
     /// 
-    /// See [User.user_id](struct.User.html#structfield.user_id) for more information.
-    #[deprecated(note="Replaced by used_uuids")]
-    used_user_ids: Vec<i32>,
     /// All uuids that are already in use, mapped to the [GameCode]() in which the player with the specified uuid is playing in.
     used_uuids: HashMap<i32, GameCode>,
     /// Stores all game codes that are already in use
@@ -43,7 +40,6 @@ impl GameManager {
     pub fn new() -> Self {
         Self {
             games: HashMap::new(),
-            used_user_ids: Vec::new(),
             used_uuids: HashMap::new(),
             used_game_codes: HashSet::new(),
         }
@@ -79,7 +75,7 @@ impl GameManager {
         game.add_user(user);
         game.set_game_master(user_id);
         self.used_game_codes.insert(code);
-        self.used_user_ids.push(user_id);
+        self.used_uuids.insert(user_id, code);
         self.games.insert(code, RwLock::new(game));
         let ip_address_send = match ip_address{
             Some(_e) => true,
@@ -148,7 +144,7 @@ impl GameManager {
             },
             None => return Err(UserRegistrationError::GameDoesNotExist(())),
         }
-        self.used_user_ids.push(user_id);
+        self.used_uuids.insert(user_id, game_code);
         let ip_address_send = match ip_address{
             Some(_e) => true,
             None => false,
@@ -288,7 +284,7 @@ impl GameManager {
     /// This does not add the generated id to the `user_ids` vector.
     fn generate_user_id(&mut self) -> i32 {
         let mut number = rand::thread_rng().gen_range(1..=i32::MAX);
-        while self.used_user_ids.contains(&number) {
+        while self.used_uuids.contains_key(&number) {
             number = rand::thread_rng().gen_range(1..=i32::MAX);
         }
         number
