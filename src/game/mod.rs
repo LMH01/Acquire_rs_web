@@ -1,12 +1,12 @@
 use std::{net::IpAddr, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, collections::{HashMap, HashSet}, time::Duration, thread};
 
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info, Responder, response, serde::json::Json};
+use rand::{thread_rng, Rng};
+use rocket::{State, tokio::sync::broadcast::Sender, log::private::info, Responder, serde::json::Json};
 use uuid::Uuid;
 
 use crate::{request_data::{UserRegistration, EventData}, authentication::UserAuth, paths::utils::get_gm_write_guard};
 
-use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET, GameState}, base_game::Player};
+use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET, GameState}};
 
 /// Contains all base components that are required to run a game
 pub mod base_game;

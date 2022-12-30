@@ -1,8 +1,8 @@
-use std::net::IpAddr;
+use std::{net::IpAddr, collections::HashSet};
 
 use uuid::Uuid;
 
-use super::{base_game::Player, GameManager, User};
+use super::{base_game::Player, User};
 
 /// Functions related to the games logic
 ///

@@ -69,7 +69,6 @@ fn rocket() -> _ {
  /*
     More todos
 
-    - i32 als userid durch uuid aus Uuid crate ersetzen.
     - replace regaining of user session through ip address with placed cookie, that is used to regain the session when connection is lost.
     - Make all links in the documentation work.
  */

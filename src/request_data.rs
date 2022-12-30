@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use rocket::FromForm;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;

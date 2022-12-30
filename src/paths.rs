@@ -1,12 +1,11 @@
-use std::{path::Path, sync::RwLock, net::IpAddr, collections::HashMap, time::Duration, thread};
+use std::{path::Path, sync::RwLock, net::IpAddr, time::Duration, thread};
 
 use rocket::{
     fs::NamedFile,
     get,
-    http::{ContentType, CookieJar, Status},
     log::private::info,
-    State, Response, response::{Redirect, stream::{EventStream, Event}}, serde::json::Json, post, Shutdown, tokio::sync::broadcast::Sender,
-    tokio::{sync::broadcast::error::RecvError, select}, request::FromParam,
+    State, response::{Redirect, stream::{EventStream, Event}}, serde::json::Json, post, Shutdown, tokio::sync::broadcast::Sender,
+    tokio::{sync::broadcast::error::RecvError, select},
 };
 use uuid::Uuid;
 
