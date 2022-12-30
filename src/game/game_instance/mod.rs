@@ -179,6 +179,15 @@ impl GameInstance {
     pub fn game_state(&self) -> &GameState {
         &self.game_state
     }
+
+    /// Returns a HashSet containing all uuids of the players that are assigned to this game instance.
+    pub fn player_uuids(&self) -> HashSet<Uuid> {
+        let mut set = HashSet::new();
+        for player in &self.players {
+            set.insert(player.user_id());
+        }
+        set
+    }
 }
 
 /// The different states a game can be in

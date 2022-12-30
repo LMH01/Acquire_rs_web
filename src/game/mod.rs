@@ -93,12 +93,15 @@ impl GameManager {
     /// `true` when the game was deleted
     /// `false` when the game was not found
     pub fn delete_game(&mut self, game_code: &GameCode) -> bool {
-        let mut game_found = false;
-        let mut game_to_remove = 0;
         if self.games.contains_key(game_code) {
             return false;
         }
-         
+        
+        // Free uuids
+        let uuids = self.game_by_code_read(*game_code).unwrap().player_uuids();
+        for uuid in uuids {
+            self.used_uuids.remove(&uuid);
+        }
         // Remove game_code from used game codes
         self.used_game_codes.remove(game_code);
         // Remove game instance
