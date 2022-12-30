@@ -1,5 +1,7 @@
 use std::net::IpAddr;
 
+use uuid::Uuid;
+
 use super::{base_game::Player, GameManager, User};
 
 /// Functions related to the games logic
@@ -65,12 +67,12 @@ impl GameInstance {
     /// # Returns
     /// - `true` game master was updated
     /// - `false` game master was not updated because the player was not found
-    pub fn set_game_master(&mut self, id: i32) -> bool {
-        match self.player_by_id_mut(id) {
+    pub fn set_game_master(&mut self, uuid: Uuid) -> bool {
+        match self.player_by_uuid_mut(uuid) {
             Some(new_gm) => {
                 new_gm.make_game_master();
                 for player in &mut self.players {
-                    if player.is_game_master() && player.user_id() != id {
+                    if player.is_game_master() && player.user_id() != uuid {
                         player.revoke_game_master();
                     }
                 }
@@ -90,8 +92,8 @@ impl GameInstance {
         &self.game_code
     }
 
-    /// Returns the player by id if found
-    pub fn player_by_id(&self, id: i32) -> Option<&Player> {
+    /// Returns the player by uuid if found
+    pub fn player_by_uuid(&self, id: Uuid) -> Option<&Player> {
         for player in &self.players {
             if player.user_id() == id {
                 return Some(player);
@@ -101,9 +103,9 @@ impl GameInstance {
     }
 
     /// Returns the player by id mutable if found
-    pub fn player_by_id_mut(&mut self, id: i32) -> Option<&mut Player> {
+    pub fn player_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Player> {
         for player in &mut self.players {
-            if player.user_id() == id {
+            if player.user_id() == uuid {
                 return Some(player);
             }
         }
@@ -123,7 +125,7 @@ impl GameInstance {
     /// Checks if a user with the `name` and `ip_addr` exists and is marked as disconnected.
     /// 
     /// If all of the above is true the user id of that user is returned.
-    pub fn reconstruct_user(&self, name: &String, ip_addr: Option<IpAddr>) -> Option<i32> {
+    pub fn reconstruct_user(&self, name: &String, ip_addr: Option<IpAddr>) -> Option<Uuid> {
         for player in &self.players {
             if player.user.name() == *name {
                 match player.user.ip_address() {
@@ -147,9 +149,9 @@ impl GameInstance {
     /// Updates the user entry to reflect that the user is connected.
     /// 
     /// Returns `false` when the user is not assigned to this game.
-    pub fn user_connected(&mut self, user_id: i32) -> bool {
+    pub fn user_connected(&mut self, uuid: Uuid) -> bool {
         for player in &mut self.players {
-            if player.user_id() == user_id {
+            if player.user_id() == uuid {
                 player.user.set_connected(true);
                 return true;
             }

@@ -6,8 +6,9 @@ use rocket::{
     http::{ContentType, CookieJar, Status},
     log::private::info,
     State, Response, response::{Redirect, stream::{EventStream, Event}}, serde::json::Json, post, Shutdown, tokio::sync::broadcast::Sender,
-    tokio::{sync::broadcast::error::RecvError, select},
+    tokio::{sync::broadcast::error::RecvError, select}, request::FromParam,
 };
+use uuid::Uuid;
 
 use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode, UserRegistrationError}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
 
@@ -109,7 +110,7 @@ pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &S
 pub fn leave_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, user_auth: UserAuth) -> Json<String> {
     match disconnect_user(game_manager, user_auth, true) {
         UserDisconnectedStatus::GameAlive => {
-            let _e = event.send(EventData::new(0, user_auth.game_code, (String::from("ReloadPlayerList"), None)));
+            let _e = event.send(EventData::new(None, user_auth.game_code, (String::from("ReloadPlayerList"), None)));
             Json::from(String::from("User marked as disconnected"))
         },
         _ => Json::from(String::from("User marked as disconnected"))
@@ -135,9 +136,9 @@ pub fn players_in_game(game_manager: &State<RwLock<GameManager>>, game_code: Gam
 /// 
 /// Only sse events that match the `game_code` and `user_id` will be transmitted back.
 #[get("/sse/<game_code>/<user_id>")]
-pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<RwLock<GameManager>>, mut end: Shutdown, game_code: String, user_id: i32) -> Option<EventStream![Event + 'a]> {
+pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<RwLock<GameManager>>, mut end: Shutdown, game_code: String, user_id: Uuid) -> Option<EventStream![Event + 'a]> {
     let mut rx = event.subscribe();
-    match UserAuth::from_id(get_gm_read_guard(game_manager, "user_auth for sse event"), user_id) {
+    match UserAuth::from_uuid(get_gm_read_guard(game_manager, "user_auth for sse event"), user_id) {
         Some(user_auth) => {
             // Mark user as connected
             get_gm_write_guard(game_manager, "Set user connected").game_by_code_write(user_auth.game_code).unwrap().user_connected(user_id);
@@ -171,7 +172,7 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
                     };
                     let msg_game_code = msg.game_code();
                     let msg_user_id = msg.user_id();
-                    if msg_game_code == user_auth.game_code.to_string() && ((msg_user_id == user_id) || msg_user_id == 0) {
+                    if msg_game_code == user_auth.game_code.to_string() && ((msg_user_id == user_id.to_string()) || msg_user_id == "") {
                         yield Event::json(&msg);
                     }
                 }
@@ -182,8 +183,8 @@ pub fn events<'a>(event: &'a State<Sender<EventData>>, game_manager: &'a State<R
 }
 
 #[get("/api/debug/<user_id>")]
-pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: i32) -> String {
-    let auth = UserAuth::from_id(get_gm_read_guard(game_manager, ""), user_id).unwrap();
+pub fn debug(game_manager: &State<RwLock<GameManager>>, ip_addr: IpAddr, event: &State<Sender<EventData>>, user_id: Uuid) -> String {
+    let auth = UserAuth::from_uuid(get_gm_read_guard(game_manager, ""), user_id).unwrap();
     let status = disconnect_user(game_manager, auth, false);
     String::from(format!("{:?}", status))
 }

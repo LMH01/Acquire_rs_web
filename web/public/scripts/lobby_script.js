@@ -1,4 +1,4 @@
-let user_id;
+let uuid;
 let user_name;
 let game_code;
 
@@ -40,8 +40,8 @@ async function createGame() {
     }
     let username = document.getElementById("player-name").value;
     let response = await postData("../api/create_game", null, {username: username})
-    console.info("Saving user_id and user_name to local storage before redirect");
-    localStorage.setItem('user_id', response.user_id);
+    console.info("Saving uuid and user_name to local storage before redirect");
+    localStorage.setItem('uuid', response.uuid);
     localStorage.setItem('user_name', username);
     window.location.href = "/lobby/" + response.game_code;
 }
@@ -62,9 +62,9 @@ async function joinGame() {
     }
     document.getElementById("username-taken-alert").hidden = true;
     window.user_name = username;
-    window.user_id = response.user_id;
+    window.uuid = response.uuid;
     window.game_code = response.game_code;
-    subscribeEvents(window.user_id);
+    subscribeEvents(window.uuid);
     reloadPlayerList();
     setJoinedGameComponents();
 }
@@ -74,7 +74,7 @@ async function leaveGame() {
         document.getElementById("leave-game-alert").hidden = false;
         return;
     }
-    let data = await postData("../api/leave_game", window.user_id);
+    let data = await postData("../api/leave_game", window.uuid);
     console.log(window.game_code);
     window.location.href = "/lobby/" + window.game_code;
 }
@@ -84,7 +84,7 @@ async function leaveGame() {
  */
 async function startGameDebug() {
     wasm_bindgen.add_player("Rust", false);
-   // localStorage.setItem('user_id', window.user_id);
+   // localStorage.setItem('uuid', window.uuid);
    // localStorage.setItem('user_name', window.user_name);
    // localStorage.setItem('game_code', window.game_code);
    // //window.location.href = "/lobby/" + window.game_code + "/game";
@@ -154,10 +154,10 @@ async function reloadPlayerList() {
 /**
  * Subscribes to the event listener at /sse
  */
-function subscribeEvents(user_id) {
+function subscribeEvents(uuid) {
   function connect() {
     let game_code = gameCodeFromURL();
-    let path = game_code + "/" + user_id;
+    let path = game_code + "/" + uuid;
     const events = new EventSource("/sse/" + path);
 
     events.addEventListener("message", (env) => {
@@ -204,16 +204,16 @@ document.addEventListener("DOMContentLoaded", async function(){
     await wasm_bindgen('../wasm/acquire_rs_wasm_bg.wasm');
     wasm_bindgen.init_lobby();
     initPage();
-    if (localStorage.getItem('user_id') != undefined) {
+    if (localStorage.getItem('uuid') != undefined) {
         console.info("Detected local storage, rebuilding page state");
-        window.user_id = localStorage.getItem('user_id');
+        window.uuid = localStorage.getItem('uuid');
         window.user_name = localStorage.getItem('user_name');
         window.game_code = gameCodeFromURL();
-        localStorage.removeItem('user_id');
+        localStorage.removeItem('uuid');
         localStorage.removeItem('user_name');
         revealInnerContainer();
         setJoinedGameComponents();
-        subscribeEvents(window.user_id);
+        subscribeEvents(window.uuid);
     } else {
         if (window.location.pathname != '/lobby' && window.location.pathname != '/lobby/') {
             console.debug("Initializing page to reflect join game state");

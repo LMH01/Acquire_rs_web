@@ -6,6 +6,7 @@ use rocket::{
     FromForm,
 };
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     game::{GameManager, game_instance::GameCode}, paths::utils::get_gm_read_guard,
@@ -42,7 +43,7 @@ pub enum PlayerAuthError {
 #[derive(Clone, Copy)]
 pub struct UserAuth {
     /// The unique id that identifies this user
-    pub user_id: i32,
+    pub uuid: Uuid,
     /// The unique code that identifies a game
     pub game_code: GameCode,
 }
@@ -50,10 +51,10 @@ pub struct UserAuth {
 impl UserAuth {
     
     /// Constructs a new [UserAuth]() by checking if the `user_id` exists and is assigned to a game.
-    pub fn from_id(game_manager: RwLockReadGuard<GameManager>, user_id: i32) -> Option<Self> {
+    pub fn from_uuid(game_manager: RwLockReadGuard<GameManager>, user_id: Uuid) -> Option<Self> {
         match game_manager.game_by_uuid_read(user_id) {
             Some(game) => Some(UserAuth {
-                user_id,
+                uuid: user_id,
                 game_code: game.game_code().clone(),
             }),
             None => None,
@@ -70,11 +71,11 @@ impl<'r> FromRequest<'r> for UserAuth {
             Some(header) => header,
             None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Missing)),
         };
-        let user_id = match user_id.parse::<i32>() {
+        let user_id = match user_id.parse::<Uuid>() {
             Ok(id) => id,
             Err(_e) => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("user_id is not a number"))))
         };
-        match UserAuth::from_id(get_gm_read_guard(request.rocket().state::<RwLock<GameManager>>().unwrap(), "user_auth: from request"), user_id) {
+        match UserAuth::from_uuid(get_gm_read_guard(request.rocket().state::<RwLock<GameManager>>().unwrap(), "user_auth: from request"), user_id) {
             Some(auth) => Outcome::Success(auth),
             None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("game not found")))),
         }

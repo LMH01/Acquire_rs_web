@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 use super::User;
 
 /// Player in the game.
@@ -23,7 +25,7 @@ impl Player {
         self.user.name()
     }
 
-    pub fn user_id(&self) -> i32 {
+    pub fn user_id(&self) -> Uuid {
         self.user.id()
     }
 

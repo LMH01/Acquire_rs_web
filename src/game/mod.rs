@@ -2,6 +2,7 @@ use std::{net::IpAddr, sync::{RwLock, RwLockReadGuard, RwLockWriteGuard}, collec
 
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use rocket::{FromForm, request::{FromRequest, Outcome}, http::Status, State, tokio::sync::broadcast::Sender, log::private::info, Responder, response, serde::json::Json};
+use uuid::Uuid;
 
 use crate::{request_data::{UserRegistration, EventData}, authentication::UserAuth, paths::utils::get_gm_write_guard};
 
@@ -31,7 +32,7 @@ pub struct GameManager {
     /// All user ids that are already in use.
     /// 
     /// All uuids that are already in use, mapped to the [GameCode]() in which the player with the specified uuid is playing in.
-    used_uuids: HashMap<i32, GameCode>,
+    used_uuids: HashMap<Uuid, GameCode>,
     /// Stores all game codes that are already in use
     used_game_codes: HashSet<GameCode>,
 }
@@ -70,18 +71,18 @@ impl GameManager {
     pub fn create_game(&mut self, username: String, ip_address: Option<IpAddr>) -> Option<UserRegistration> {
         let code = self.generate_game_code();
         let mut game = GameInstance::new(code);
-        let user_id = self.generate_user_id();
-        let user = User::new(ip_address, username, user_id);
+        let uuid = self.generate_user_id();
+        let user = User::new(ip_address, username, uuid);
         game.add_user(user);
-        game.set_game_master(user_id);
+        game.set_game_master(uuid);
         self.used_game_codes.insert(code);
-        self.used_uuids.insert(user_id, code);
+        self.used_uuids.insert(uuid, code);
         self.games.insert(code, RwLock::new(game));
         let ip_address_send = match ip_address{
             Some(_e) => true,
             None => false,
         };
-        Some(UserRegistration::new(user_id, code, ip_address_send))
+        Some(UserRegistration::new(uuid, code, ip_address_send))
     }
 
     /// Deletes the game instance for the game code from the server.
@@ -117,7 +118,7 @@ impl GameManager {
     /// - `Ok(UserRegistration)` when the user was added to the game.
     /// - `Err(UserRegistrationError)` when the player was not added to the game, contains the reason why the player was not added.
     pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ip_address: Option<IpAddr>) -> Result<UserRegistration, UserRegistrationError> {//TODO Move function to GameInstance
-        let user_id = self.generate_user_id();
+        let uuid = self.generate_user_id();
         if self.games.contains_key(&game_code) {
             let game = self.games.get(&game_code);
         }
@@ -127,16 +128,16 @@ impl GameManager {
                 if !game_write.does_player_exist(&username) {
                     match game_write.game_state() {
                         GameState::Lobby => {
-                            game_write.add_user(User::new(ip_address, username.clone(), user_id));
+                            game_write.add_user(User::new(ip_address, username.clone(), uuid));
                         }
                         _ => return Err(UserRegistrationError::GameAlreadyStarted(())),
                     }
                 } else if ip_address.is_some() {
                     match game_write.reconstruct_user(&username, ip_address) {
-                        Some(user_id) => {
+                        Some(uuid) => {
                             // Add player to player list again
-                            let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
-                            return Ok(UserRegistration::new(user_id, *game_write.game_code(), true));
+                            let _e = event.send(EventData::new(None, game_code, (String::from("AddPlayer"), Some(username))));
+                            return Ok(UserRegistration::new(uuid, *game_write.game_code(), true));
                         }
                         None => return Err(UserRegistrationError::NameTaken(Json(String::from("name_taken")))),
                     }
@@ -144,23 +145,23 @@ impl GameManager {
             },
             None => return Err(UserRegistrationError::GameDoesNotExist(())),
         }
-        self.used_uuids.insert(user_id, game_code);
+        self.used_uuids.insert(uuid, game_code);
         let ip_address_send = match ip_address{
             Some(_e) => true,
             None => false,
         };
-        let _e = event.send(EventData::new(0, game_code, (String::from("AddPlayer"), Some(username))));
-        Ok(UserRegistration::new(user_id, game_code, ip_address_send))
+        let _e = event.send(EventData::new(None, game_code, (String::from("AddPlayer"), Some(username))));
+        Ok(UserRegistration::new(uuid, game_code, ip_address_send))
     }
 
-    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) wrapped inside an [RwLock]() where the [User](struct.User.html) with `user_id` is assigned to when found.
+    /// Returns reference to [GameInstance](game_instance/struct.GameInstance.html) wrapped inside an [RwLock]() where the [User](struct.User.html) with `uuid` is assigned to when found.
     /// 
     /// # Returns
     /// - `Some(&RwLock<GameInstance>)` when a game for the specified user exists.
     /// - `None` the game does not exist.
-    pub fn game_by_user_id(&self, user_id: i32) -> Option<&RwLock<GameInstance>> {
-        if self.used_uuids.contains_key(&user_id) {
-            let code = self.used_uuids.get(&user_id).unwrap();
+    pub fn game_by_uuid(&self, uuid: Uuid) -> Option<&RwLock<GameInstance>> {
+        if self.used_uuids.contains_key(&uuid) {
+            let code = self.used_uuids.get(&uuid).unwrap();
             self.games.get(code)
         } else {
             None
@@ -168,16 +169,16 @@ impl GameManager {
     }
     
     /// Returns [RwLockReadGuard]() for the [GameInstance]() where the `uuid` is assigned to.
-    pub fn game_by_uuid_read(&self, uuid: i32) -> Option<RwLockReadGuard<GameInstance>> {
-        match self.game_by_user_id(uuid) {
+    pub fn game_by_uuid_read(&self, uuid: Uuid) -> Option<RwLockReadGuard<GameInstance>> {
+        match self.game_by_uuid(uuid) {
             Some(game) => Some(game.read().unwrap()),
             None => None,
         }
     }
 
     /// Returns [RwLockWriteGuard]() for the [GameInstance]() where the `uuid` is assigned to.    
-    pub fn game_by_uuid_write(&self, uuid: i32) -> Option<RwLockWriteGuard<GameInstance>> {
-        match self.game_by_user_id(uuid) {
+    pub fn game_by_uuid_write(&self, uuid: Uuid) -> Option<RwLockWriteGuard<GameInstance>> {
+        match self.game_by_uuid(uuid) {
             Some(game) => Some(game.write().unwrap()),
             None => None,
         }
@@ -282,12 +283,12 @@ impl GameManager {
     /// Generates a unique user id that is not yet registered in the `user_ids` vector.
     /// 
     /// This does not add the generated id to the `user_ids` vector.
-    fn generate_user_id(&mut self) -> i32 {
-        let mut number = rand::thread_rng().gen_range(1..=i32::MAX);
-        while self.used_uuids.contains_key(&number) {
-            number = rand::thread_rng().gen_range(1..=i32::MAX);
+    fn generate_user_id(&mut self) -> Uuid {
+        let mut uuid = Uuid::new_v4();
+        while self.used_uuids.contains_key(&uuid) {
+            uuid = Uuid::new_v4();
         }
-        number
+        uuid
     }    
 }
 
@@ -312,7 +313,7 @@ pub fn disconnect_user(game_manager: &RwLock<GameManager>, user_auth: UserAuth, 
         let game_manager = get_gm_write_guard(game_manager, "disconnect_user: phase 1");
         let mut game = game_manager.game_by_code_write(user_auth.game_code).unwrap();
         // 1. Update connection status to false
-        game.player_by_id_mut(user_auth.user_id).unwrap().user.set_connected(false);
+        game.player_by_uuid_mut(user_auth.uuid).unwrap().user.set_connected(false);
         // 2. Check if game is abandoned
         if !game.abandoned() {
             return UserDisconnectedStatus::GameAlive;
@@ -365,10 +366,10 @@ pub enum UserDisconnectedStatus {
 pub struct User {
     /// The username of this user.
     username: String,
-    /// The unique user id of this user, it is used to identify this player.
+    /// The uuid of this user, it is used to identify this player.
     ///
     /// It is also used to authorize the player against the server using the [UserAuth](../authentication/struct.UserAuth.html) request guard.
-    user_id: i32,
+    uuid: Uuid,
     /// The ip address of the client, used to reconstruct the user id if connection was lost.
     ip_address: Option<IpAddr>,
     /// Stores if this user has an open sse stream currently.
@@ -382,11 +383,11 @@ impl User {
     /// `ip_address` the ip address of the client
     /// `username` the username of the user
     /// `user_id` a unique user id
-    pub fn new(ip_address: Option<IpAddr>, username: String, user_id: i32) -> Self {
+    pub fn new(ip_address: Option<IpAddr>, username: String, uuid: Uuid) -> Self {
         Self {
             ip_address,
             username,
-            user_id,
+            uuid: uuid,
             connected: false,
         }
     }
@@ -402,8 +403,8 @@ impl User {
     }
 
     /// Returns the users id
-    pub fn id(&self) -> i32 {
-        self.user_id
+    pub fn id(&self) -> Uuid {
+        self.uuid
     }
 
     /// Returns if the user is currently connected to the server
