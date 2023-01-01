@@ -5,11 +5,11 @@ use rocket::{
     get,
     log::private::info,
     State, response::{Redirect, stream::{EventStream, Event}}, serde::json::Json, post, Shutdown, tokio::sync::broadcast::Sender,
-    tokio::{sync::broadcast::error::RecvError, select},
+    tokio::{sync::broadcast::error::RecvError, select}, http::{CookieJar, Cookie},
 };
 use uuid::Uuid;
 
-use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode, UserRegistrationError}, request_data::{UserRegistration, Username, EventData}, authentication::UserAuth};
+use crate::{game::{GameManager, disconnect_user, UserDisconnectedStatus, game_instance::GameCode, UserRegistrationError}, request_data::{UserRegistration, Username, EventData}, authentication::{UserAuth, UserRecovery}};
 
 use self::utils::{get_gm_read_guard, get_gm_write_guard};
 
@@ -54,35 +54,15 @@ pub async fn game_page(game_manager: &State<RwLock<GameManager>>, game_code: &st
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/create_game", data = "<username>", rank = 1)]
-pub fn create_game(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>, ip_addr: IpAddr) -> Option<Json<UserRegistration>> {
+pub fn create_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
     let mut game_manager = get_gm_write_guard(game_manager, "create_game");
-    match game_manager.create_game(String::from(username.username), Some(ip_addr)) {
-        Some(registration) => Some(Json(registration)),
+    match game_manager.create_game(String::from(username.username)) {
+        Some(registration) => {
+            // Set recovery cookie
+            cookies.add(Cookie::new("urid", registration.urid.value().to_string()));
+            Some(Json(registration))}
+            ,
         None => None,
-    }
-}
-
-/// 
-/// # Requires
-/// The user needs to send a username formatted in a json string in the post request body.
-#[post("/api/create_game", data = "<username>", rank = 2)]
-pub fn create_game_without_ip(game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
-    let mut game_manager = get_gm_write_guard(game_manager, "create_game_without_ip");
-    match game_manager.create_game(String::from(username.username), None) {
-        Some(registration) => Some(Json(registration)),
-        None => None,
-    }
-}
-
-/// 
-/// # Requires
-/// The user needs to send a username formatted in a json string in the post request body.
-#[post("/api/join_game", data = "<username>", rank = 1)]
-pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, ip_addr: IpAddr, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
-    let mut game_manager = get_gm_write_guard(game_manager, "join_game");
-    match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ip_addr)) {
-        Ok(registration) => Ok(Json(registration)),
-        Err(err) => Err(err),
     }
 }
 
@@ -90,10 +70,32 @@ pub fn join_game(game_manager: &State<RwLock<GameManager>>, event: &State<Sender
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/join_game", data = "<username>", rank = 2)]
-pub fn join_game_without_ip(game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
-    let mut game_manager = get_gm_write_guard(game_manager, "join_game_without_ip");
+pub fn join_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
+    let mut game_manager = get_gm_write_guard(game_manager, "join_game");
     match game_manager.add_player_to_game(event, game_code, String::from(username.username), None) {
-        Ok(registration) => Ok(Json(registration)),
+        Ok(registration) => {
+            // Set recovery cookie
+            cookies.add(Cookie::new("urid", registration.urid.value().to_string()));
+            Ok(Json(registration))}
+            ,
+        Err(err) => Err(err),
+    }
+}
+
+/// 
+/// # Requires
+/// The user needs to send a username formatted in a json string in the post request body.
+#[post("/api/join_game", data = "<username>", rank = 1)]
+pub fn join_game_recovery(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode, ur: UserRecovery) -> Result<Json<UserRegistration>, UserRegistrationError> {
+    let mut game_manager = get_gm_write_guard(game_manager, "join_game");
+    let mut ur = ur.clone();
+    ur.name = Some(String::from(username.username));
+    match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ur)) {
+        Ok(registration) => {
+            // Set recovery cookie
+            cookies.add(Cookie::new("urid", registration.urid.value().to_string()));
+            Ok(Json(registration))}
+            ,
         Err(err) => Err(err),
     }
 }

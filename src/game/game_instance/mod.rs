@@ -1,6 +1,9 @@
 use std::{net::IpAddr, collections::HashSet};
 
+use rocket::form::name;
 use uuid::Uuid;
+
+use crate::{authentication::UserRecovery, request_data::UserRegistration};
 
 use super::{base_game::Player, User};
 
@@ -72,7 +75,7 @@ impl GameInstance {
             Some(new_gm) => {
                 new_gm.make_game_master();
                 for player in &mut self.players {
-                    if player.is_game_master() && player.user_id() != uuid {
+                    if player.is_game_master() && player.uuid() != uuid {
                         player.revoke_game_master();
                     }
                 }
@@ -95,7 +98,7 @@ impl GameInstance {
     /// Returns the player by uuid if found
     pub fn player_by_uuid(&self, id: Uuid) -> Option<&Player> {
         for player in &self.players {
-            if player.user_id() == id {
+            if player.uuid() == id {
                 return Some(player);
             }
         }
@@ -105,7 +108,7 @@ impl GameInstance {
     /// Returns the player by id mutable if found
     pub fn player_by_uuid_mut(&mut self, uuid: Uuid) -> Option<&mut Player> {
         for player in &mut self.players {
-            if player.user_id() == uuid {
+            if player.uuid() == uuid {
                 return Some(player);
             }
         }
@@ -122,28 +125,34 @@ impl GameInstance {
         false
     }
 
-    /// Checks if a user with the `name` and `ip_addr` exists and is marked as disconnected.
-    /// 
-    /// If all of the above is true the user id of that user is returned.
-    pub fn reconstruct_user(&self, name: &String, ip_addr: Option<IpAddr>) -> Option<Uuid> {
+    /// Checks if the player with the name is connected to the game.
+    pub fn is_player_connected(&self, name: &String) -> bool {  
         for player in &self.players {
             if player.user.name() == *name {
-                match player.user.ip_address() {
-                    Some(addr) => {
-                        if ip_addr.is_some() && addr == &ip_addr.unwrap() {
-                            if USER_RECONSTRUCTION_DISCONNECT_REQUIRED {
-                                if !player.user.connected() {
-                                    return Some(player.user_id());
-                                }
-                            } else {
-                                return Some(player.user_id())};
-                            }
-                        }
-                    None => return None,
+                return player.user.connected;
+            }
+        }
+        false
+    }
+
+    /// Validates the UserRecovery.
+    /// 
+    /// # Returns
+    /// - `true` user recovery is valid
+    /// - `false` user recovery is invalid
+    pub fn validate_urid(&self, ur: UserRecovery) -> bool {
+        for player in &self.players {
+            let user = &player.user;
+            if user.uuid == ur.urid.value() {
+                match ur.name {
+                    Some(name) => {
+                        return user.name() == name;
+                    }
+                    None => return false,
                 }
             }
         }
-        None
+        false
     }
     
     /// Updates the user entry to reflect that the user is connected.
@@ -151,7 +160,7 @@ impl GameInstance {
     /// Returns `false` when the user is not assigned to this game.
     pub fn user_connected(&mut self, uuid: Uuid) -> bool {
         for player in &mut self.players {
-            if player.user_id() == uuid {
+            if player.uuid() == uuid {
                 player.user.set_connected(true);
                 return true;
             }
@@ -184,9 +193,19 @@ impl GameInstance {
     pub fn player_uuids(&self) -> HashSet<Uuid> {
         let mut set = HashSet::new();
         for player in &self.players {
-            set.insert(player.user_id());
+            set.insert(player.uuid());
         }
         set
+    }
+
+    /// Returns the user registration for the user with `name` if that user exists.
+    pub fn user_registration(&self, name: &str) -> Option<UserRegistration> {
+        for player in &self.players {
+            if player.user.name() == name {
+                return Some(UserRegistration::from_user(&player.user));
+            }
+        }
+        None
     }
 }
 

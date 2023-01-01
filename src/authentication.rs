@@ -1,9 +1,10 @@
-use std::{sync::{RwLock, RwLockReadGuard}};
+use std::{sync::{RwLock, RwLockReadGuard}, clone};
 
 use rocket::{
-    http::Status,
+    http::{Status, CookieJar},
     request::{FromRequest, Outcome},
 };
+use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
 use crate::{
@@ -12,10 +13,12 @@ use crate::{
 
 /// Errors that can occur when the user tries to authenticate a request
 #[derive(Debug)]
-pub enum PlayerAuthError {
-    /// The transmitted user_id header is missing
-    Missing,
-    /// The transmitted user_id header is invalid.
+pub enum FromRequestError {
+    /// Something is missing for the request guard to succeed.
+    /// 
+    /// `String` contains more information on what is missing.
+    Missing(String),
+    /// The transmitted data is invalid.
     /// 
     /// `String` contains more information on why the authentication is invalid.
     Invalid(String),
@@ -62,20 +65,20 @@ impl UserAuth {
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for UserAuth {
-    type Error = PlayerAuthError;
+    type Error = FromRequestError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
         let user_id = match request.headers().get_one("user_id") {
             Some(header) => header,
-            None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Missing)),
+            None => return Outcome::Failure((Status::Forbidden, FromRequestError::Missing(String::from("The user_id header is missing")))),
         };
         let user_id = match user_id.parse::<Uuid>() {
             Ok(id) => id,
-            Err(_e) => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("user_id is not a number"))))
+            Err(_e) => return Outcome::Failure((Status::Forbidden, FromRequestError::Invalid(String::from("user_id is not a number"))))
         };
         match UserAuth::from_uuid(get_gm_read_guard(request.rocket().state::<RwLock<GameManager>>().unwrap(), "user_auth: from request"), user_id) {
             Some(auth) => Outcome::Success(auth),
-            None => return Outcome::Failure((Status::Forbidden, PlayerAuthError::Invalid(String::from("game not found")))),
+            None => return Outcome::Failure((Status::Forbidden, FromRequestError::Invalid(String::from("game not found")))),
         }
     }
 }
@@ -119,4 +122,101 @@ impl<'r> FromRequest<'r> for GameCode {
             Outcome::Failure((Status::Forbidden, GameCodeError::NotFound))
         }
     }
+}
+
+/// Used to recover the user authentication after the connection was lost.
+/// 
+/// For that a cookie named `urid` is placed when the player connects.
+/// 
+/// This cookie is constructed into a UserRecovery wich is then validated by the game instance.
+/// If this check succeeds the `uuid` is send back to the user with which subsequent 
+/// requests can be authenticated again.
+///  
+/// See [GameInstance::validate_uri()]() for more information.
+#[derive(Clone)]
+pub struct UserRecovery {
+    /// The urid of the user that thries to recover the authentication.
+    pub urid: Urid,
+    /// The name of the user that tries to recover the authentication.
+    pub name: Option<String>,
+}
+
+impl UserRecovery {
+    /// Creates a new user recovery
+    pub fn new(urid: Urid) -> Self {
+        Self {
+            urid,
+            name: None,
+        }
+    }
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for UserRecovery {
+    type Error = FromRequestError;
+
+    async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
+        match Self::from_cookie(request.cookies(), "urid") {
+            Ok(urid) => Outcome::Success(*urid),
+            Err(err) => Outcome::Failure((Status::Forbidden, err)),
+        }
+    }
+}
+
+impl FromCookie for UserRecovery {
+
+    /// Constructs a new `UserRecovery` from a cookie.
+    /// 
+    /// The `name` field is not set automatically.
+    fn from_cookie(cookies: &CookieJar<'_>, name: &str) -> Result<Box<Self>, FromRequestError> {
+        match cookies.get(name).map(|cookie| cookie.value().parse::<String>().unwrap()) {
+            Some(value) => {
+                match Uuid::parse_str(&value) {
+                    Ok(uuid) => Ok(Box::new(UserRecovery::new(Urid::from_uuid(uuid)))),
+                    Err(_err) => Err(FromRequestError::Invalid(String::from("Unable to construct urid from cookie, value invalid"))),
+                }
+            },
+            None => Err(FromRequestError::Missing(String::from("Cookie named urid missing"))),
+        }
+    }
+}
+
+/// User recovery id that is used to recover a lost connection.
+#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy)]
+pub struct Urid {
+    uuid: Uuid,
+}
+
+impl Urid {
+    /// Creates a new `Urid`
+    pub fn new() -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
+        }
+    }
+
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self {
+            uuid,
+        }
+    }
+
+    /// Returns the value of this urid.
+    pub fn value(&self) -> Uuid {
+        self.uuid
+    }
+}
+
+/// Trait to construct a type with the value of a cookie.
+pub trait FromCookie {
+    /// Create `Self` from a cookie.
+    /// 
+    /// # Arguments
+    /// - `cookies` all cookies that are submitted in an http request
+    /// - `name` the name for the cookie from whichs value `Self` should be constructed
+    /// 
+    /// # Returns
+    /// - `Ok(Box<Self>)` `Self` was successfully constructed
+    /// - `Err(FromRequestError)` `Self` could not be constructed, contains detailed information on what failed
+    fn from_cookie(cookies: &CookieJar<'_>, name: &str) -> Result<Box<Self>, FromRequestError>;
 }

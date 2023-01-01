@@ -25,8 +25,8 @@ impl Player {
         self.user.name()
     }
 
-    pub fn user_id(&self) -> Uuid {
-        self.user.id()
+    pub fn uuid(&self) -> Uuid {
+        self.user.uuid()
     }
 
     /// Updates this player to be the game master

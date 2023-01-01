@@ -2,26 +2,35 @@ use rocket::FromForm;
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
-use crate::game::game_instance::GameCode;
+use crate::{game::{game_instance::GameCode, User}, authentication::Urid};
 
 /// Used to transmit data back to the user when a new game is joined
 #[derive(Serialize, Deserialize)]
 pub struct UserRegistration {
     /// Unique user id for the user
     uuid: Uuid,
+    /// Id to recover registration
+    pub urid: Urid,
     /// Game code of the game where the user is assigned to
     game_code: String,
-    /// Stores if the ip address was send. If it was not sent a warning will be shown to the player.
-    ip_address_send: bool,
 }
 
 impl UserRegistration {
-    /// Construct a new `PlayerRegistration`
-    pub fn new(uuid: Uuid, game_code: GameCode, ip_address_send: bool) -> Self {
+    /// Construct a new `UserRegistration`
+    pub fn new(uuid: Uuid, urid: Urid, game_code: GameCode) -> Self {
         Self {
             uuid,
+            urid,
             game_code: game_code.to_string(),
-            ip_address_send
+        }
+    }
+
+    /// Constructs a new `UserRegistration` from an existing user
+    pub fn from_user(user: &User) -> Self {
+        Self {
+            uuid: user.uuid(),
+            urid: user.urid(),
+            game_code: user.game_code().to_string(),
         }
     }
 }
