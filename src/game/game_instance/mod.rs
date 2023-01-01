@@ -143,7 +143,7 @@ impl GameInstance {
     pub fn validate_urid(&self, ur: UserRecovery) -> bool {
         for player in &self.players {
             let user = &player.user;
-            if user.uuid == ur.urid.value() {
+            if user.urid.value() == ur.urid.value() {
                 match ur.name {
                     Some(name) => {
                         return user.name() == name;

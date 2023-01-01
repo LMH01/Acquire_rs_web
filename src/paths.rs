@@ -53,7 +53,7 @@ pub async fn game_page(game_manager: &State<RwLock<GameManager>>, game_code: &st
 /// 
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
-#[post("/api/create_game", data = "<username>", rank = 1)]
+#[post("/api/create_game", data = "<username>")]
 pub fn create_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
     let mut game_manager = get_gm_write_guard(game_manager, "create_game");
     match game_manager.create_game(String::from(username.username)) {
