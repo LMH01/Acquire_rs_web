@@ -142,7 +142,13 @@ impl GameInstance {
         for player in &self.players {
             let user = &player.user;
             if user.urid.value() == ur.urid.value() {
-                return true;
+                if ur.name.is_some() {
+                    if &user.username == ur.name.as_ref().unwrap() {
+                        return true;
+                    } else {
+                        continue;
+                    }
+                }
             }
         }
         false
