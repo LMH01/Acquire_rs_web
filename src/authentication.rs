@@ -171,7 +171,7 @@ impl<'r> FromRequest<'r> for UserRecovery {
         };
         match ur {
             Ok(urid) => Outcome::Success(urid),
-            Err(err) => Outcome::Failure((Status::Forbidden, err)),
+            Err(_err) => Outcome::Forward(()),
         }
     }
 

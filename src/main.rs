@@ -37,7 +37,7 @@ mod paths;
 fn rocket() -> _ {
     rocket::build()
         .mount("/", FileServer::from(relative!("web/public")))
-        .mount("/", routes![events, lobby, lobby_join, game_page, create_game, join_game_recovery, join_game, leave_game, players_in_game, debug, debug_busy, debug_game])
+        .mount("/", routes![events, lobby, lobby_join, game_page, create_game, join_game, join_game_recovery, leave_game, players_in_game, debug, debug_busy, debug_game])
         .manage(RwLock::new(GameManager::new()))
         .manage(channel::<EventData>(1024).0)
 }
