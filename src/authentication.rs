@@ -1,4 +1,4 @@
-use std::{sync::{RwLock, RwLockReadGuard}, clone};
+use std::{sync::{RwLock, RwLockReadGuard}, clone, collections::{HashSet, HashMap}, net::IpAddr};
 
 use rocket::{
     http::{Status, CookieJar},
@@ -135,20 +135,24 @@ impl<'r> FromRequest<'r> for GameCode {
 /// See [GameInstance::validate_uri()]() for more information.
 #[derive(Clone)]
 pub struct UserRecovery {
-    /// The urid of the user that thries to recover the authentication.
+    /// The urid of the user that tries to recover the authentication.
     pub urid: Urid,
     /// The name of the user that tries to recover the authentication.
     pub name: Option<String>,
+    /// The ip address of the user that tries to recover the authentication.
+    pub ip_addr: Option<IpAddr>,
 }
 
 impl UserRecovery {
     /// Creates a new user recovery
-    pub fn new(urid: Urid) -> Self {
+    pub fn new(urid: Urid, ip_addr: Option<IpAddr>) -> Self {
         Self {
             urid,
             name: None,
+            ip_addr,
         }
     }
+
 }
 
 #[rocket::async_trait]
@@ -156,29 +160,21 @@ impl<'r> FromRequest<'r> for UserRecovery {
     type Error = FromRequestError;
 
     async fn from_request(request: &'r rocket::Request<'_>) -> Outcome<Self, Self::Error> {
-        match Self::from_cookie(request.cookies(), "urid") {
-            Ok(urid) => Outcome::Success(*urid),
+        let ur = match request.cookies().get("urid").map(|cookie| cookie.value().parse::<String>().unwrap()) {
+            Some(value) => {
+                match Uuid::parse_str(&value) {
+                    Ok(uuid) => Ok(UserRecovery::new(Urid::from_uuid(uuid), request.client_ip())),
+                    Err(_err) => Err(FromRequestError::Invalid(String::from("Unable to construct ruid from cookie, value invalid"))),
+                }
+            }
+            None => Err(FromRequestError::Missing(String::from("Cookie named urid missing"))),
+        };
+        match ur {
+            Ok(urid) => Outcome::Success(urid),
             Err(err) => Outcome::Failure((Status::Forbidden, err)),
         }
     }
-}
 
-impl FromCookie for UserRecovery {
-
-    /// Constructs a new `UserRecovery` from a cookie.
-    /// 
-    /// The `name` field is not set automatically.
-    fn from_cookie(cookies: &CookieJar<'_>, name: &str) -> Result<Box<Self>, FromRequestError> {
-        match cookies.get(name).map(|cookie| cookie.value().parse::<String>().unwrap()) {
-            Some(value) => {
-                match Uuid::parse_str(&value) {
-                    Ok(uuid) => Ok(Box::new(UserRecovery::new(Urid::from_uuid(uuid)))),
-                    Err(_err) => Err(FromRequestError::Invalid(String::from("Unable to construct urid from cookie, value invalid"))),
-                }
-            },
-            None => Err(FromRequestError::Missing(String::from("Cookie named urid missing"))),
-        }
-    }
 }
 
 /// User recovery id that is used to recover a lost connection.
@@ -207,16 +203,113 @@ impl Urid {
     }
 }
 
-/// Trait to construct a type with the value of a cookie.
-pub trait FromCookie {
-    /// Create `Self` from a cookie.
+/// Stores all used user recovery ids
+pub struct Urids {
+    /// All user recovery ids
+    used_urids: HashSet<Urid>,
+    /// All user recovery ids mapped to an ip address
+    urid_by_ip: HashMap<IpAddr, Urid>,
+}
+
+impl Urids {
+    pub fn new() -> Self {
+        Self {
+            used_urids: HashSet::new(),
+            urid_by_ip: HashMap::new(),
+        }
+    }
+
+    /// Adds the urid to the `used_urids` set.
+    /// 
+    /// If an [IpAddr]() is provided, the urid will also be added to the
+    /// `urid_by_ip` map.
+    /// If the map already contains this address the value is not updated.
+    /// 
+    /// Returns whether the urid was newly added. That is:
+    /// - If the urid was newly added, `true` is returned.
+    /// - If the urid was already added, `false` is returned.
+    pub fn add_urid(&mut self, urid: Urid, ip_addr: Option<IpAddr>) -> bool {
+        if ip_addr.is_some() && !self.urid_by_ip.contains_key(&ip_addr.unwrap()) {
+            self.urid_by_ip.insert(ip_addr.unwrap(), urid);
+        }
+        self.used_urids.insert(urid)
+    }
+
+    /// Generate a new [Urid]() and register it or return the [Urid]() linked to
+    /// the `ip_addr`.
+    /// 
+    /// Registering means that the newly genreated [Urid]() is placed in the
+    /// fields of this struct.
     /// 
     /// # Arguments
-    /// - `cookies` all cookies that are submitted in an http request
-    /// - `name` the name for the cookie from whichs value `Self` should be constructed
+    /// - `ip_addr` the ip address of the user that needs a new urid.
     /// 
     /// # Returns
-    /// - `Ok(Box<Self>)` `Self` was successfully constructed
-    /// - `Err(FromRequestError)` `Self` could not be constructed, contains detailed information on what failed
-    fn from_cookie(cookies: &CookieJar<'_>, name: &str) -> Result<Box<Self>, FromRequestError>;
+    /// Returns new [Urid]() or the [Urid]() linked to the `ip_addr`.
+    pub fn register(&mut self, ip_addr: Option<IpAddr>) -> Urid {
+        let urid = self.generate_urid();
+        match ip_addr {
+            Some(value) => {
+                if self.urid_by_ip.contains_key(&value) {
+                    *self.urid_by_ip.get(&value).unwrap()
+                } else {
+                    self.urid_by_ip.insert(value, urid);
+                    self.used_urids.insert(urid);
+                    urid
+                }
+            },
+            None => {
+                self.used_urids.insert(urid);
+                urid
+            },
+        }
+    }
+
+    /// Unregisters the `urid`.
+    /// 
+    /// Takes O(n) time, `n` being the amount of elements in the `urid_by_ip` field.
+    pub fn unregister(&mut self, urid: Urid) {
+        self.used_urids.remove(&urid);
+        let mut ip_to_remove: Option<IpAddr> = None;
+        for (k, v) in &self.urid_by_ip {
+            if *v == urid {
+                ip_to_remove = Some(*k);
+            }
+        }
+        if ip_to_remove.is_some() {
+            self.urid_by_ip.remove(&ip_to_remove.unwrap());
+        }
+    }
+
+    /// Unregisters all provided `urids`.
+    /// 
+    /// Takes O(n) time, `n` being the amount of elements in the `urid_by_ip` field.
+    pub fn unregister_all(&mut self, urids: &HashSet<Urid>) {
+        let mut ips_to_remove: HashSet<IpAddr> = HashSet::new();
+        for urid in urids {
+            self.used_urids.remove(&urid);
+        }
+        for (k, v) in &self.urid_by_ip {
+            for urid in urids {
+                if *v == *urid {
+                    ips_to_remove.insert(*k);
+                }
+            }
+        }
+        for ip in ips_to_remove {
+            self.urid_by_ip.remove(&ip);
+        }
+    }
+
+    /// Generates a uniqe recovery id that is not yet in use.
+    /// 
+    /// This does not add the generated id to the `used_urid` set.
+    pub fn generate_urid(&self) -> Urid {
+        let mut urid = Urid::from_uuid(Uuid::new_v4());
+        while self.used_urids.contains(&urid) {
+            urid = Urid::from_uuid(Uuid::new_v4());
+        }
+        urid
+    }
+
 }

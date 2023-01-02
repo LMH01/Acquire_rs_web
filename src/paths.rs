@@ -54,9 +54,9 @@ pub async fn game_page(game_manager: &State<RwLock<GameManager>>, game_code: &st
 /// # Requires
 /// The user needs to send a username formatted in a json string in the post request body.
 #[post("/api/create_game", data = "<username>")]
-pub fn create_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>) -> Option<Json<UserRegistration>> {
+pub fn create_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, username: Json<Username<'_>>, ip_addr: Option<IpAddr>) -> Option<Json<UserRegistration>> {
     let mut game_manager = get_gm_write_guard(game_manager, "create_game");
-    match game_manager.create_game(String::from(username.username)) {
+    match game_manager.create_game(String::from(username.username), ip_addr) {
         Some(registration) => {
             // Set recovery cookie
             cookies.add(Cookie::new("urid", registration.urid.value().to_string()));
@@ -72,7 +72,7 @@ pub fn create_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameMana
 #[post("/api/join_game", data = "<username>", rank = 2)]
 pub fn join_game(cookies: &CookieJar<'_>, game_manager: &State<RwLock<GameManager>>, event: &State<Sender<EventData>>, username: Json<Username<'_>>, game_code: GameCode) -> Result<Json<UserRegistration>, UserRegistrationError> {
     let mut game_manager = get_gm_write_guard(game_manager, "join_game");
-    match game_manager.add_player_to_game(event, game_code, String::from(username.username), None) {
+    match game_manager.add_player_to_game(event, game_code, String::from(username.username), None, None) {
         Ok(registration) => {
             // Set recovery cookie
             cookies.add(Cookie::new("urid", registration.urid.value().to_string()));
@@ -90,7 +90,7 @@ pub fn join_game_recovery(cookies: &CookieJar<'_>, game_manager: &State<RwLock<G
     let mut game_manager = get_gm_write_guard(game_manager, "join_game");
     let mut ur = ur.clone();
     ur.name = Some(String::from(username.username));
-    match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ur)) {
+    match game_manager.add_player_to_game(event, game_code, String::from(username.username), Some(ur.clone()), ur.ip_addr) {
         Ok(registration) => {
             // Set recovery cookie
             cookies.add(Cookie::new("urid", registration.urid.value().to_string()));

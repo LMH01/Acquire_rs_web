@@ -4,9 +4,9 @@ use rand::{thread_rng, Rng};
 use rocket::{State, tokio::sync::broadcast::Sender, log::private::info, Responder, serde::json::Json};
 use uuid::Uuid;
 
-use crate::{request_data::{UserRegistration, EventData}, authentication::{UserAuth, UserRecovery, Urid}, paths::utils::get_gm_write_guard};
+use crate::{request_data::{UserRegistration, EventData}, authentication::{UserAuth, UserRecovery, Urid, Urids}, paths::utils::get_gm_write_guard};
 
-use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET, GameState, USER_RECONSTRUCTION_DISCONNECT_REQUIRED}};
+use self::{game_instance::{GameInstance, GameCode, GAME_CODE_CHARSET, GameState}};
 
 /// Contains all base components that are required to run a game
 pub mod base_game;
@@ -33,8 +33,8 @@ pub struct GameManager {
     /// 
     /// All uuids that are already in use, mapped to the [GameCode]() in which the player with the specified uuid is playing in.
     used_uuids: HashMap<Uuid, GameCode>,
-    /// All user recovery ids
-    used_urids: HashSet<Urid>,
+    /// Stores and manages all user recovery ids that are already in used.
+    urids: Urids,
     /// Stores all game codes that are already in use
     used_game_codes: HashSet<GameCode>,
 }
@@ -44,7 +44,7 @@ impl GameManager {
         Self {
             games: HashMap::new(),
             used_uuids: HashMap::new(),
-            used_urids: HashSet::new(),
+            urids: Urids::new(),
             used_game_codes: HashSet::new(),
         }
     }    
@@ -66,22 +66,21 @@ impl GameManager {
     /// 
     /// # Params
     /// `username` the username of the user that creates the game
-    /// `ip_address` the ip address of the user that creates the game. See [User]() for reason why `ip_address` is required.
+    /// `ip_addr` the ip address of the user that creates the game. See [User]() for reason why `ip_address` is required.
     /// 
     /// # Returns
     /// `Some(UserRegistration)` when the game was created
     /// `None` when the game was not created
-    pub fn create_game(&mut self, username: String) -> Option<UserRegistration> {
+    pub fn create_game(&mut self, username: String, ip_addr: Option<IpAddr>) -> Option<UserRegistration> {
         let code = self.generate_game_code();
         let mut game = GameInstance::new(code);
         let uuid = self.generate_uuid();
-        let urid = self.generate_urid();
+        let urid = self.urids.register(ip_addr);
         let user = User::new(username, uuid, urid, code);
         game.add_user(user);
         game.set_game_master(uuid);
         self.used_game_codes.insert(code);
         self.used_uuids.insert(uuid, code);
-        self.used_urids.insert(urid);
         self.games.insert(code, RwLock::new(game));
         Some(UserRegistration::new(uuid, urid, code))
     }
@@ -103,9 +102,7 @@ impl GameManager {
         for player in self.game_by_code_read(*game_code).unwrap().players() {
             urids_to_remove.insert(player.user.urid.clone());
         }
-        for urid in urids_to_remove {
-            self.used_urids.remove(&urid);
-        }
+        self.urids.unregister_all(&urids_to_remove);
         let uuids = self.game_by_code_read(*game_code).unwrap().player_uuids();
         for uuid in uuids {
             self.used_uuids.remove(&uuid);
@@ -128,12 +125,9 @@ impl GameManager {
     /// # Returns
     /// - `Ok(UserRegistration)` when the user was added to the game.
     /// - `Err(UserRegistrationError)` when the player was not added to the game, contains the reason why the player was not added.
-    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ur: Option<UserRecovery>) -> Result<UserRegistration, UserRegistrationError> {//TODO Move function to GameInstance
+    pub fn add_player_to_game(&mut self, event: &State<Sender<EventData>>, game_code: GameCode, username: String, ur: Option<UserRecovery>, ip_addr: Option<IpAddr>) -> Result<UserRegistration, UserRegistrationError> {//TODO Move function to GameInstance
         let uuid = self.generate_uuid();
-        let urid = self.generate_urid();
-        if self.games.contains_key(&game_code) {
-            let game = self.games.get(&game_code);
-        }
+        let urid = self.urids.register(ip_addr);
         match self.games.get(&game_code) {
             Some(game) => {
                 let mut game_write = game.write().unwrap();
@@ -145,7 +139,6 @@ impl GameManager {
                         _ => return Err(UserRegistrationError::GameAlreadyStarted(())),
                     }
                 } else {
-                    let user_registration = game_write.user_registration(&username);
                     if game_write.is_player_connected(&username) {
                         if ur.is_some() && game_write.validate_urid(ur.unwrap()) {
                             return Ok(game_write.user_registration(&username).unwrap());
@@ -161,7 +154,12 @@ impl GameManager {
             None => return Err(UserRegistrationError::GameDoesNotExist(())),
         }
         self.used_uuids.insert(uuid, game_code);
-        self.used_urids.insert(urid);
+        //if ur.is_some() {
+        //    self.urids.add_urid(urid, ur.unwrap().ip_addr);
+        //} else {
+        //    self.urids.add_urid(urid, None);
+        //}
+        //self.used_urids.insert(urid);
         let _e = event.send(EventData::new(None, game_code, (String::from("AddPlayer"), Some(username))));
         Ok(UserRegistration::new(uuid, urid, game_code))
     }
@@ -303,16 +301,6 @@ impl GameManager {
         uuid
     }
 
-    /// Generates a uniqe recovery id that is not yet in use.
-    /// 
-    /// This does nto add the generated id to the `used_urid` set.
-    fn generate_urid(&mut self) -> Urid {
-        let mut urid = Urid::from_uuid(Uuid::new_v4());
-        while self.used_urids.contains(&urid) {
-            urid = Urid::from_uuid(Uuid::new_v4());
-        }
-        urid
-    }
 }
 
 

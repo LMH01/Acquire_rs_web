@@ -14,8 +14,6 @@ mod logic;
 
 /// All characters that can be used to generate a game code
 pub const GAME_CODE_CHARSET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWZ";
-/// Determines if a disconnect is required to reconstruct a user
-pub const USER_RECONSTRUCTION_DISCONNECT_REQUIRED: bool = false;
 
 /// Representation of a game
 pub struct GameInstance {
@@ -144,12 +142,7 @@ impl GameInstance {
         for player in &self.players {
             let user = &player.user;
             if user.urid.value() == ur.urid.value() {
-                match ur.name {
-                    Some(name) => {
-                        return user.name() == name;
-                    }
-                    None => return false,
-                }
+                return true;
             }
         }
         false
